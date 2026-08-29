@@ -194,13 +194,8 @@ export function resolveUserAccount(params: {
   let needsAdminVerification = false;
   
   if (isAdmin) {
-    // Check if admin password already verified in sessionStorage for this session
-    const adminSessionKey = `mt_admin_verified_${cleanUsername}`;
-    const isAlreadyVerified = sessionStorage.getItem(adminSessionKey) === 'true';
-
-    if (!isAlreadyVerified) {
-      needsAdminVerification = true;
-    }
+    // Always require password verification for admin access
+    needsAdminVerification = true;
   }
 
   const userGroup = params.userGroupParam ? decodeURIComponent(params.userGroupParam).trim() : undefined;
