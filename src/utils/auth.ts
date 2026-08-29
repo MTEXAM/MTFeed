@@ -190,13 +190,9 @@ export function resolveUserAccount(params: {
   }
 
   // --- Admin Password Verification (Bank2546) ---
-  let isAdmin = params.role === 'admin' || params.role === 'true' || params.role === '1' || cleanUsername.toLowerCase() === 'bank';
-  let needsAdminVerification = false;
-  
-  if (isAdmin) {
-    // Always require password verification for admin access
-    needsAdminVerification = true;
-  }
+  const isRequestedAdmin = params.role === 'admin' || params.role === 'true' || params.role === '1' || cleanUsername.toLowerCase() === 'bank';
+  let isAdmin = false;
+  let needsAdminVerification = isRequestedAdmin;
 
   const userGroup = params.userGroupParam ? decodeURIComponent(params.userGroupParam).trim() : undefined;
   const academicYear = params.academicYearParam ? decodeURIComponent(params.academicYearParam).trim() : undefined;
@@ -222,7 +218,8 @@ export function resolveUserAccount(params: {
       faculty: faculty || existing.faculty,
       university: university || existing.university,
       badge: computedBadge,
-      isAdmin: isAdmin || existing.isAdmin
+      isAdmin: isRequestedAdmin ? false : existing.isAdmin,
+      needsAdminVerification
     };
     saveRegisteredUser(updatedUser);
     return updatedUser;
@@ -240,21 +237,22 @@ export function resolveUserAccount(params: {
       faculty: faculty || existingByUsername.faculty,
       university: university || existingByUsername.university,
       badge: computedBadge,
-      isAdmin: isAdmin || existingByUsername.isAdmin
+      isAdmin: isRequestedAdmin ? false : existingByUsername.isAdmin,
+      needsAdminVerification
     };
     saveRegisteredUser(updatedUser);
     return updatedUser;
   }
 
   // Otherwise create new permanent user with 8-char UID
-  const finalUid = uid || (isAdmin ? 'BANK2026' : generateHash8(cleanUsername + '_mt'));
+  const finalUid = uid || (isRequestedAdmin ? 'BANK2026' : generateHash8(cleanUsername + '_mt'));
   const cleanDisplayName = params.displayName 
     ? decodeURIComponent(params.displayName).trim() 
-    : (isAdmin ? 'Admin Bank' : cleanUsername);
+    : (isRequestedAdmin ? 'Admin Bank' : cleanUsername);
     
   const cleanAvatar = params.avatar 
     ? decodeURIComponent(params.avatar).trim() 
-    : (isAdmin 
+    : (isRequestedAdmin 
         ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' 
         : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanUsername)}&backgroundColor=cccccc`);
 
@@ -264,12 +262,13 @@ export function resolveUserAccount(params: {
     username: cleanUsername,
     name: cleanDisplayName,
     avatar: cleanAvatar,
-    userGroup: userGroup || (isAdmin ? 'ผู้ดูแลระบบ' : '🔬🎓 นศ.เทคนิคการแพทย์'),
-    academicYear: academicYear || (isAdmin ? undefined : 'ปี 3'),
+    userGroup: userGroup || (isRequestedAdmin ? 'ผู้ดูแลระบบ' : '🔬🎓 นศ.เทคนิคการแพทย์'),
+    academicYear: academicYear || (isRequestedAdmin ? undefined : 'ปี 3'),
     faculty: faculty || 'คณะเทคนิคการแพทย์',
     university: university || '',
     badge: computedBadge,
-    isAdmin,
+    isAdmin: false,
+    needsAdminVerification,
     joinedAt: new Date().toLocaleDateString('th-TH')
   };
 
