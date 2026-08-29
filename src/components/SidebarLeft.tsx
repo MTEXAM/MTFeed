@@ -9,15 +9,13 @@ export function SidebarLeft({
   setActiveCategory,
   unreadCount = 0,
   onOpenNotifications,
-  currentUser,
-  onEditProfile
+  currentUser
 }: { 
   activeCategory: string;
   setActiveCategory: (id: string) => void;
   unreadCount?: number;
   onOpenNotifications?: () => void;
   currentUser?: SessionUser | null;
-  onEditProfile?: () => void;
 }) {
   const badgeText = currentUser ? (currentUser.badge || formatUserBadge(currentUser)) : '';
   const badgeStyle = getBadgeStyle(badgeText);
@@ -63,15 +61,13 @@ export function SidebarLeft({
               </p>
             )}
 
-            {onEditProfile && (
-              <button
-                onClick={onEditProfile}
-                className="w-full mt-3 py-1 px-2 text-[11px] font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100/80 rounded-lg transition-colors flex items-center justify-center space-x-1"
-              >
-                <Icons.Edit3 className="w-3 h-3" />
-                <span>แก้ไขสถานะการศึกษา</span>
-              </button>
-            )}
+            <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between text-[10px] text-gray-400">
+              <span className="flex items-center">
+                <Icons.ShieldCheck className="w-3 h-3 mr-1 text-green-500" />
+                ซิงค์สถานะจาก MTExam
+              </span>
+              <span className="font-mono text-[9px]">#{currentUser.uid}</span>
+            </div>
           </div>
         )}
 

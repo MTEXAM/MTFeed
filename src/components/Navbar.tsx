@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookA, MessageSquare, Bell, Search, Settings, User, Shield, Award, Edit3 } from 'lucide-react';
+import { BookA, MessageSquare, Bell, Search, Settings, User, Shield, Award } from 'lucide-react';
 import { SessionUser } from '../types';
 import { getBadgeStyle, formatUserBadge } from '../utils/auth';
 
@@ -7,7 +7,6 @@ export function Navbar({
   user, 
   onLoginClick, 
   onAdminClick,
-  onEditProfile,
   searchQuery,
   onSearchChange,
   unreadCount = 0,
@@ -17,7 +16,6 @@ export function Navbar({
   user: SessionUser | null;
   onLoginClick: () => void;
   onAdminClick?: () => void;
-  onEditProfile?: () => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
   unreadCount?: number;
@@ -148,18 +146,6 @@ export function Navbar({
                       )}
                     </div>
                     <div className="py-1">
-                      {onEditProfile && (
-                        <button 
-                          onClick={onEditProfile}
-                          className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
-                        >
-                          <span className="flex items-center font-medium">
-                            <Edit3 className="w-4 h-4 mr-2 text-gray-500" />
-                            ปรับแต่งสถานะ / ป้ายยศ
-                          </span>
-                          <span className="text-[10px] text-red-600 font-semibold">แก้ไข →</span>
-                        </button>
-                      )}
                       <button 
                         onClick={onOpenNotifications}
                         className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"

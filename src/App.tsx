@@ -8,7 +8,6 @@ import { OnlineMembersModal } from './components/OnlineMembersModal';
 import { NotificationsModal } from './components/NotificationsModal';
 import { AdminBoardModal } from './components/AdminBoardModal';
 import { ExternalLinkModal } from './components/ExternalLinkModal';
-import { ProfileEditModal } from './components/ProfileEditModal';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post } from './types';
 import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser } from './utils/auth';
@@ -76,7 +75,6 @@ export default function App() {
   const [isAdminBoardOpen, setIsAdminBoardOpen] = useState(false);
   const [isOnlineModalOpen, setIsOnlineModalOpen] = useState(false);
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
-  const [isProfileEditModalOpen, setIsProfileEditModalOpen] = useState(false);
   const [pendingExternalUrl, setPendingExternalUrl] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -177,14 +175,14 @@ export default function App() {
     }
   };
 
-  const handleProfileUpdate = (updatedUser: SessionUser) => {
-    setUser(updatedUser);
-    setRegisteredUsers(getAllRegisteredUsersList());
-    try {
-      localStorage.setItem('mtfeed_user', JSON.stringify(updatedUser));
-    } catch (e) {
-      console.error(e);
+  const handleOpenExternalUrl = (url: string) => {
+    // Whitelist MTExam so it opens directly without safety warning modal
+    if (url.includes('mtexam-passalldiwa.ai.studio')) {
+      const target = url.startsWith('http') ? url : `https://${url}`;
+      window.open(target, '_blank', 'noopener,noreferrer');
+      return;
     }
+    setPendingExternalUrl(url);
   };
 
   const handleLogout = () => {
@@ -281,12 +279,11 @@ export default function App() {
         user={user} 
         onLoginClick={() => setIsAuthModalOpen(true)} 
         onAdminClick={() => setIsAdminBoardOpen(true)}
-        onEditProfile={() => setIsProfileEditModalOpen(true)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         unreadCount={unreadNotificationsCount}
         onOpenNotifications={() => setIsNotificationsModalOpen(true)}
-        onExternalLinkClick={(url) => setPendingExternalUrl(url)}
+        onExternalLinkClick={handleOpenExternalUrl}
       />
       
       <main className="max-w-7xl mx-auto flex justify-center lg:justify-between px-0 sm:px-4 lg:px-8">
@@ -299,7 +296,6 @@ export default function App() {
           unreadCount={unreadNotificationsCount}
           onOpenNotifications={() => setIsNotificationsModalOpen(true)}
           currentUser={user}
-          onEditProfile={() => setIsProfileEditModalOpen(true)}
         />
         
         <Feed 
@@ -318,7 +314,7 @@ export default function App() {
           onClearSearch={() => setSearchQuery('')}
           registeredUsers={registeredUsers}
           onMention={handleMentionNotification}
-          onExternalLinkClick={(url) => setPendingExternalUrl(url)}
+          onExternalLinkClick={handleOpenExternalUrl}
         />
         
         <SidebarRight 
@@ -349,7 +345,7 @@ export default function App() {
             href="https://mtexam-passalldiwa.ai.studio/" 
             onClick={(e) => {
               e.preventDefault();
-              setPendingExternalUrl('https://mtexam-passalldiwa.ai.studio/');
+              handleOpenExternalUrl('https://mtexam-passalldiwa.ai.studio/');
             }}
             className="p-2 text-gray-700 hover:text-red-600 transition-colors flex flex-col items-center"
             title="คลังข้อสอบ"
@@ -431,13 +427,6 @@ export default function App() {
         registeredUsers={registeredUsers}
         onDeleteUser={handleDeleteUser}
         currentUser={user}
-      />
-
-      <ProfileEditModal
-        isOpen={isProfileEditModalOpen}
-        onClose={() => setIsProfileEditModalOpen(false)}
-        user={user}
-        onUpdateUser={handleProfileUpdate}
       />
     </div>
   );
