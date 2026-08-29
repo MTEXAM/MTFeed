@@ -93,9 +93,9 @@ export function OnlineMembersModal({
             </div>
             <div>
               <h3 className="font-bold text-lg leading-tight flex items-center space-x-2">
-                <span>สมาชิกในระบบ (ผู้ใช้จริง)</span>
-                <span className="bg-green-400 text-gray-900 text-xs px-2.5 py-0.5 rounded-full font-bold">
-                  ● {displayList.length} คน
+                <span>สมาชิกในระบบ MTFeed</span>
+                <span className="bg-white/25 text-white text-xs px-2.5 py-0.5 rounded-full font-bold">
+                  {displayList.length} บัญชี
                 </span>
               </h3>
               <p className="text-xs text-red-100 mt-0.5">

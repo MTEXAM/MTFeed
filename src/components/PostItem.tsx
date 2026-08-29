@@ -159,23 +159,41 @@ export function PostItem({
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
-              <span className="text-sm font-bold text-gray-900 truncate">{post.author.name}</span>
-              {post.author.badge && (
-                (() => {
-                  const style = getBadgeStyle(post.author.badge);
+              {(() => {
+                const isAdminPost = post.author.badge === '👑 Admin' || post.author.isAdmin || post.author.username?.toLowerCase() === 'bank' || post.author.name === 'Admin Bank' || post.author.name === 'bank';
+                if (isAdminPost) {
+                  const style = getBadgeStyle('👑 Admin');
                   return (
                     <span 
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${style.bg} ${style.text} ${style.border}`}
-                      title={[post.author.faculty, post.author.university].filter(Boolean).join(' • ') || post.author.badge}
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${style.bg} ${style.text} ${style.border}`}
+                      title="👑 Admin"
                     >
-                      {post.author.badge}
+                      👑 Admin
                     </span>
                   );
-                })()
-              )}
-              {!post.isAnonymous && post.author.badge !== '👑 Admin' && (
-                <span className="text-xs text-gray-400 truncate">@{post.author.username}</span>
-              )}
+                }
+                return (
+                  <>
+                    <span className="text-sm font-bold text-gray-900 truncate">{post.author.name}</span>
+                    {post.author.badge && (
+                      (() => {
+                        const style = getBadgeStyle(post.author.badge);
+                        return (
+                          <span 
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${style.bg} ${style.text} ${style.border}`}
+                            title={[post.author.faculty, post.author.university].filter(Boolean).join(' • ') || post.author.badge}
+                          >
+                            {post.author.badge}
+                          </span>
+                        );
+                      })()
+                    )}
+                    {!post.isAnonymous && (
+                      <span className="text-xs text-gray-400 truncate">@{post.author.username}</span>
+                    )}
+                  </>
+                );
+              })()}
               <span className="text-xs text-gray-400">·</span>
               <span className="text-xs text-gray-500">{post.createdAt}</span>
             </div>
@@ -335,17 +353,32 @@ export function PostItem({
                       </div>
                       <div className="min-w-0 flex-1 bg-gray-50 rounded-2xl px-4 py-2">
                         <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                          <span className="text-sm font-bold text-gray-900">{comment.author.name}</span>
-                          {comment.author.badge && (
-                            (() => {
-                              const style = getBadgeStyle(comment.author.badge);
+                          {(() => {
+                            const isAdminComment = comment.author.badge === '👑 Admin' || comment.author.isAdmin || comment.author.username?.toLowerCase() === 'bank' || comment.author.name === 'Admin Bank' || comment.author.name === 'bank';
+                            if (isAdminComment) {
+                              const style = getBadgeStyle('👑 Admin');
                               return (
-                                <span className={`inline-flex items-center px-1.5 py-0.2 rounded-full text-[10px] font-bold border ${style.bg} ${style.text} ${style.border}`}>
-                                  {comment.author.badge}
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${style.bg} ${style.text} ${style.border}`}>
+                                  👑 Admin
                                 </span>
                               );
-                            })()
-                          )}
+                            }
+                            return (
+                              <>
+                                <span className="text-sm font-bold text-gray-900">{comment.author.name}</span>
+                                {comment.author.badge && (
+                                  (() => {
+                                    const style = getBadgeStyle(comment.author.badge);
+                                    return (
+                                      <span className={`inline-flex items-center px-1.5 py-0.2 rounded-full text-[10px] font-bold border ${style.bg} ${style.text} ${style.border}`}>
+                                        {comment.author.badge}
+                                      </span>
+                                    );
+                                  })()
+                                )}
+                              </>
+                            );
+                          })()}
                           <span className="text-xs text-gray-400">{comment.createdAt}</span>
                         </div>
                         <p className="text-sm text-gray-800 mt-0.5 whitespace-pre-wrap">{renderContentWithLinks(comment.content)}</p>

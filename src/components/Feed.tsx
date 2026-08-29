@@ -52,14 +52,15 @@ export function Feed({
       ? MOCK_USERS.anon 
       : { 
           id: user.uid || user.id || user.username, 
-          name: user.name || (user.isAdmin ? 'Admin' : user.username), 
+          name: (user.isAdmin || user.badge === '👑 Admin') ? '👑 Admin' : (user.name || user.username), 
           username: user.username, 
           avatar: user.avatar || (user.isAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.username)}&backgroundColor=cccccc`),
           badge: user.badge || (user.isAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
           userGroup: user.userGroup,
           academicYear: user.academicYear,
           faculty: user.faculty,
-          university: user.university
+          university: user.university,
+          isAdmin: user.isAdmin
         };
 
     // Automatically extract hashtags from content if any
@@ -131,14 +132,15 @@ export function Feed({
 
     const author = { 
       id: user.uid || user.id || user.username, 
-      name: user.name || (user.isAdmin ? 'Admin' : user.username), 
+      name: (user.isAdmin || user.badge === '👑 Admin') ? '👑 Admin' : (user.name || user.username), 
       username: user.username, 
       avatar: user.avatar || (user.isAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}&backgroundColor=cccccc`),
       badge: user.badge || (user.isAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
       userGroup: user.userGroup,
       academicYear: user.academicYear,
       faculty: user.faculty,
-      university: user.university
+      university: user.university,
+      isAdmin: user.isAdmin
     };
 
     const newComment: Comment = {

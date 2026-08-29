@@ -131,18 +131,17 @@ export function SidebarRight({
           )}
         </div>
 
-        {/* Online Members Box (Real Users Only) */}
+        {/* Members in System Box */}
         <div 
           onClick={onOpenOnlineModal}
           className="bg-gray-50 hover:bg-gray-100/90 rounded-2xl p-5 border border-gray-100 shadow-xs cursor-pointer transition-all group"
         >
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center space-x-2">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-              </span>
-              <h2 className="text-base font-bold text-gray-900 group-hover:text-red-600 transition-colors">สมาชิกออนไลน์</h2>
+              <div className="p-1.5 bg-red-100 text-red-600 rounded-lg">
+                <Users className="w-4 h-4" />
+              </div>
+              <h2 className="text-base font-bold text-gray-900 group-hover:text-red-600 transition-colors">สมาชิกในระบบ</h2>
             </div>
             <span className="text-xs text-red-600 font-medium bg-red-50 px-2 py-0.5 rounded-full group-hover:bg-red-600 group-hover:text-white transition-colors">
               ดูรายชื่อ →
@@ -175,15 +174,13 @@ export function SidebarRight({
               )}
             </div>
             <span className="text-sm font-bold text-gray-700 bg-white px-2.5 py-1 rounded-full border border-gray-200 shadow-xs">
-              {activeCount} คน {activeCount === 1 && currentUser ? '(คุณ)' : ''}
+              {activeCount} บัญชี
             </span>
           </div>
           <p className="text-xs text-gray-500 mt-3 flex items-center space-x-1">
             <Sparkles className="w-3.5 h-3.5 text-yellow-500" />
             <span>
-              {activeCount === 1 
-                ? 'กำลังออนไลน์ 1 คน (คุณอยู่ในระบบ)' 
-                : `มีสมาชิกออนไลน์จริง ${activeCount} คน`}
+              สมาชิกทั้งหมดที่ลงทะเบียนในระบบ MTFeed
             </span>
           </p>
         </div>

@@ -60,13 +60,10 @@ function getInitialUser(): SessionUser | null {
       }
     }
 
-    // If not in URL, check if session marked as entered via link
-    const enteredViaLink = sessionStorage.getItem('mtfeed_entered_via_link');
-    if (enteredViaLink === 'true') {
-      const savedUser = localStorage.getItem('mtfeed_user');
-      if (savedUser) {
-        return JSON.parse(savedUser);
-      }
+    // If not in URL query, load saved user session from localStorage
+    const savedUser = localStorage.getItem('mtfeed_user');
+    if (savedUser) {
+      return JSON.parse(savedUser);
     }
   } catch (e) {
     console.error('Error parsing initial user:', e);

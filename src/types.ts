@@ -8,6 +8,7 @@ export interface User {
   academicYear?: string;
   faculty?: string;
   university?: string;
+  isAdmin?: boolean;
 }
 
 export interface SessionUser {

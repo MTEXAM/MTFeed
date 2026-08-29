@@ -278,7 +278,8 @@ export function resolveUserAccount(params: {
   universityParam?: string | null;
   verifiedAdmin?: boolean;
 }): SessionUser {
-  const cleanUsername = params.username.trim().replace(/^@/, '');
+  const rawUsername = params.username.trim();
+  const cleanUsername = rawUsername.replace(/^@/, '');
   
   // 1. If explicit 8-char UID passed from exam web
   let uid = '';
@@ -286,22 +287,38 @@ export function resolveUserAccount(params: {
     uid = params.uidParam.trim().toUpperCase().slice(0, 8);
   }
 
-  const registry = getRegisteredUsers();
+  // --- Check if this is Admin Username (@bank / @admin_bank / @admin_master) ---
+  const isBankAdminUsername = 
+    cleanUsername.toLowerCase() === 'bank' || 
+    cleanUsername.toLowerCase() === 'admin_bank' || 
+    cleanUsername.toLowerCase() === 'admin_master';
 
-  // --- Strict Duplicate Username Check ---
-  // Check if username is already registered under a DIFFERENT UID
-  const existingByUsername = findUserByUsername(cleanUsername);
-  if (existingByUsername && (!uid || existingByUsername.uid !== uid)) {
-    alert(`❌ ปฏิเสธการเข้าสู่ระบบ! ชื่อผู้ใช้ "@${cleanUsername}" มีผู้ใช้งานอื่นครอบครองอยู่แล้วในระบบ MTFeed`);
-    throw new Error(`Duplicate username: @${cleanUsername}`);
+  if (isBankAdminUsername && !uid) {
+    uid = 'BANK2026';
   }
 
-  // --- Admin Password Verification (Bank2546) ---
-  const isRequestedAdmin = params.role === 'admin' || params.role === 'true' || params.role === '1' || cleanUsername.toLowerCase() === 'bank' || cleanUsername.toLowerCase() === 'admin_bank';
+  const registry = getRegisteredUsers();
+
+  // Find existing account by UID or Username in local registry
+  const existingUser = (uid && registry[uid]) || findUserByUsername(cleanUsername);
+
+  // Determine final UID
+  const finalUid = uid || existingUser?.uid || (isBankAdminUsername ? 'BANK2026' : generateHash8(cleanUsername + '_mt'));
+
+  // Determine Admin rights
+  const isRequestedAdmin = 
+    params.role === 'admin' || 
+    params.role === 'true' || 
+    params.role === '1' || 
+    isBankAdminUsername;
   
-  // If verifiedAdmin is passed explicitly or saved in sessionStorage
-  const isAlreadyVerified = params.verifiedAdmin || sessionStorage.getItem(`mt_admin_verified_${cleanUsername}`) === 'true';
-  const isAdmin = isRequestedAdmin && isAlreadyVerified;
+  const isAlreadyVerified = 
+    params.verifiedAdmin || 
+    sessionStorage.getItem(`mt_admin_verified_${cleanUsername}`) === 'true' ||
+    sessionStorage.getItem('mt_admin_verified_BANK2026') === 'true' ||
+    existingUser?.isAdmin === true;
+
+  const isAdmin = isRequestedAdmin ? isAlreadyVerified : (existingUser?.isAdmin || false);
   const needsAdminVerification = isRequestedAdmin && !isAlreadyVerified;
 
   const userGroup = params.userGroupParam ? decodeURIComponent(params.userGroupParam).trim() : undefined;
@@ -311,80 +328,39 @@ export function resolveUserAccount(params: {
 
   const computedBadge = formatUserBadge({
     isAdmin: isAdmin || isRequestedAdmin,
-    userGroup: userGroup || (isRequestedAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
-    academicYear: academicYear || (isRequestedAdmin ? undefined : 'ปี 3'),
+    userGroup: userGroup || existingUser?.userGroup || (isRequestedAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
+    academicYear: academicYear || existingUser?.academicYear || (isRequestedAdmin ? undefined : 'ปี 3'),
     username: cleanUsername
   });
 
-  // If UID provided and exists in registry, load and merge
-  if (uid && registry[uid]) {
-    const existing = registry[uid];
-    const updatedUser: SessionUser = {
-      ...existing,
-      username: cleanUsername || existing.username,
-      name: params.displayName ? decodeURIComponent(params.displayName).trim() : existing.name,
-      avatar: params.avatar ? decodeURIComponent(params.avatar).trim() : existing.avatar,
-      userGroup: userGroup || existing.userGroup || '🔬🎓 นศ.เทคนิคการแพทย์',
-      academicYear: academicYear || existing.academicYear || 'ปี 3',
-      faculty: faculty || existing.faculty,
-      university: university || existing.university,
-      badge: computedBadge,
-      isAdmin: isAdmin ? true : (isRequestedAdmin ? false : existing.isAdmin),
-      needsAdminVerification
-    };
-    saveRegisteredUser(updatedUser);
-    return updatedUser;
-  }
-
-  // If existing by username and matches UID
-  if (existingByUsername) {
-    const updatedUser: SessionUser = {
-      ...existingByUsername,
-      uid: uid || existingByUsername.uid,
-      name: params.displayName ? decodeURIComponent(params.displayName).trim() : existingByUsername.name,
-      avatar: params.avatar ? decodeURIComponent(params.avatar).trim() : existingByUsername.avatar,
-      userGroup: userGroup || existingByUsername.userGroup || '🔬🎓 นศ.เทคนิคการแพทย์',
-      academicYear: academicYear || existingByUsername.academicYear || 'ปี 3',
-      faculty: faculty || existingByUsername.faculty,
-      university: university || existingByUsername.university,
-      badge: computedBadge,
-      isAdmin: isAdmin ? true : (isRequestedAdmin ? false : existingByUsername.isAdmin),
-      needsAdminVerification
-    };
-    saveRegisteredUser(updatedUser);
-    return updatedUser;
-  }
-
-  // Otherwise create new permanent user with 8-char UID
-  const finalUid = uid || (isRequestedAdmin ? 'BANK2026' : generateHash8(cleanUsername + '_mt'));
   const cleanDisplayName = params.displayName 
     ? decodeURIComponent(params.displayName).trim() 
-    : (isRequestedAdmin ? 'Admin Bank' : cleanUsername);
-    
+    : (existingUser?.name || (isRequestedAdmin ? 'Admin Bank' : cleanUsername));
+
   const cleanAvatar = params.avatar 
     ? decodeURIComponent(params.avatar).trim() 
-    : (isRequestedAdmin 
+    : (existingUser?.avatar || (isRequestedAdmin 
         ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' 
-        : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanUsername)}&backgroundColor=cccccc`);
+        : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanUsername)}&backgroundColor=cccccc`));
 
-  const newUser: SessionUser = {
+  const resolvedUser: SessionUser = {
     id: finalUid,
     uid: finalUid,
     username: cleanUsername,
     name: cleanDisplayName,
     avatar: cleanAvatar,
-    userGroup: userGroup || (isRequestedAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
-    academicYear: academicYear || (isRequestedAdmin ? undefined : 'ปี 3'),
-    faculty: faculty || 'คณะเทคนิคการแพทย์',
-    university: university || '',
+    userGroup: userGroup || existingUser?.userGroup || (isRequestedAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
+    academicYear: academicYear || existingUser?.academicYear || (isRequestedAdmin ? undefined : 'ปี 3'),
+    faculty: faculty || existingUser?.faculty || 'คณะเทคนิคการแพทย์',
+    university: university || existingUser?.university || '',
     badge: computedBadge,
-    isAdmin: isAdmin,
+    isAdmin,
     needsAdminVerification,
-    joinedAt: new Date().toLocaleDateString('th-TH')
+    joinedAt: existingUser?.joinedAt || new Date().toLocaleDateString('th-TH')
   };
 
-  saveRegisteredUser(newUser);
-  return newUser;
+  saveRegisteredUser(resolvedUser);
+  return resolvedUser;
 }
 
 // Generate default notifications for user
