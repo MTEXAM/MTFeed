@@ -1,0 +1,80 @@
+export interface User {
+  id: string;
+  name: string;
+  username: string;
+  avatar: string;
+  badge?: string;
+}
+
+export interface SessionUser {
+  id?: string;
+  uid: string; // 8-character permanent unique identifier (e.g. "8A9K2L1P")
+  username: string;
+  name?: string;
+  avatar?: string;
+  email?: string;
+  isAdmin: boolean;
+  joinedAt?: string;
+}
+
+export interface AppNotification {
+  id: string;
+  type: 'like' | 'comment' | 'mention' | 'system' | 'badge';
+  title: string;
+  description: string;
+  authorName?: string;
+  authorAvatar?: string;
+  targetPostId?: string;
+  targetTag?: string;
+  recipientUsername?: string; // target recipient username
+  createdAt: string;
+  read: boolean;
+}
+
+export interface Comment {
+  id: string;
+  author: User;
+  content: string;
+  createdAt: string;
+}
+
+export interface PollOption {
+  id: string;
+  text: string;
+  votes: number;
+}
+
+export interface Post {
+  id: string;
+  author: User;
+  content: string;
+  image?: string;
+  poll?: {
+    options: PollOption[];
+    expiresAt: string;
+    totalVotes: number;
+  };
+  tags: string[];
+  createdAt: string;
+  stats: {
+    replies: number;
+    reposts: number;
+    likes: number;
+    bookmarks: number;
+  };
+  isAnonymous?: boolean;
+  userInteractions?: {
+    liked?: boolean;
+    reposted?: boolean;
+    bookmarked?: boolean;
+    votedOptionId?: string;
+  };
+  comments?: Comment[];
+  isReported?: boolean;
+}
+
+export interface Trend {
+  id: string;
+  tag: string;
+  postCount: number;
+}

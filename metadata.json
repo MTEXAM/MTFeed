@@ -1,0 +1,6 @@
+{
+  "name": "MT Feed",
+  "description": "ชุมชนสไตล์ Twitter สำหรับเด็กเทคนิคการแพทย์",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
