@@ -166,7 +166,7 @@ export function PostItem({
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
               {(() => {
-                const isAdminPost = post.author.badge === '👑 Admin' || post.author.isAdmin || post.author.username?.toLowerCase() === 'bank' || post.author.name === 'Admin Bank' || post.author.name === 'bank';
+                const isAdminPost = post.author.isAdmin || post.author.badge === '👑 Admin';
                 if (isAdminPost) {
                   const style = getBadgeStyle('👑 Admin');
                   return (
@@ -362,7 +362,7 @@ export function PostItem({
                       <div className="min-w-0 flex-1 bg-gray-50 rounded-2xl px-4 py-2">
                         <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                           {(() => {
-                            const isAdminComment = comment.author.badge === '👑 Admin' || comment.author.isAdmin || comment.author.username?.toLowerCase() === 'bank' || comment.author.name === 'Admin Bank' || comment.author.name === 'bank';
+                            const isAdminComment = comment.author.isAdmin || comment.author.badge === '👑 Admin';
                             if (isAdminComment) {
                               const style = getBadgeStyle('👑 Admin');
                               return (

@@ -21,13 +21,9 @@ export function AuthModal({
     const isAdminPassword = password.trim() === 'Bank2546';
     const isBankAdmin = cleanUser.toLowerCase() === 'bank' || cleanUser.toLowerCase() === 'admin_bank' || cleanUser.toLowerCase() === 'admin';
     
-    if (isAdminPassword || isBankAdmin) {
-      if (isAdminPassword) {
-        sessionStorage.setItem(`mt_admin_verified_${cleanUser}`, 'true');
-        onLogin(cleanUser, true, true);
-      } else {
-        onLogin(cleanUser, true, false);
-      }
+    if (isAdminPassword) {
+      sessionStorage.setItem(`mt_admin_verified_${cleanUser}`, 'true');
+      onLogin(cleanUser, true, true);
     } else {
       onLogin(cleanUser, false, false);
     }

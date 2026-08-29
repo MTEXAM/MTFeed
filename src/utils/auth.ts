@@ -34,6 +34,17 @@ export function generateRandomUid8(): string {
 const REGISTRY_KEY = 'mtfeed_accounts_registry';
 
 export const DEFAULT_ACTIVE_USERS: Record<string, SessionUser> = {
+  'MED68001': {
+    uid: 'MED68001',
+    username: 'bank',
+    name: 'bank',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5',
+    isAdmin: true,
+    userGroup: '👑 Admin',
+    academicYear: 'ปี 5+',
+    faculty: 'คณะเทคนิคการแพทย์',
+    badge: '👑 Admin'
+  },
   'BANK2026': {
     uid: 'BANK2026',
     username: 'admin_master',
@@ -44,17 +55,6 @@ export const DEFAULT_ACTIVE_USERS: Record<string, SessionUser> = {
     academicYear: 'ปี 5+',
     faculty: 'คณะเทคนิคการแพทย์',
     badge: '👑 Admin'
-  },
-  'MED68001': {
-    uid: 'MED68001',
-    username: 'somchai_mt',
-    name: 'สมชาย เทค',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=somchai_mt',
-    isAdmin: false,
-    userGroup: '🔬🎓 นศ.เทคนิคการแพทย์',
-    academicYear: 'ปี 3',
-    faculty: 'คณะเทคนิคการแพทย์',
-    badge: '🔬🎓 นศ.เทคนิคการแพทย์ • ปี 3'
   },
   'MED67012': {
     uid: 'MED67012',
@@ -218,13 +218,16 @@ export function formatUserBadge(user: {
   academicYear?: string;
   badge?: string;
   username?: string;
+  uid?: string;
 }): string {
-  if (user.isAdmin || user.badge === '👑 Admin' || user.userGroup?.includes('Admin') || user.userGroup?.includes('ผู้ดูแลระบบ') || user.username?.toLowerCase() === 'bank') return '👑 Admin';
-  if (user.badge) return user.badge;
+  if (user.isAdmin) return '👑 Admin';
+  if (user.badge && user.badge !== '👑 Admin') return user.badge;
   
   if (user.userGroup) {
     const group = user.userGroup.trim();
-    // If student group with year
+    if (group.includes('Admin') || group.includes('ผู้ดูแลระบบ')) {
+      return '🔬🎓 นศ.เทคนิคการแพทย์';
+    }
     if (user.academicYear && (group.includes('นศ.') || group.includes('นักศึกษา') || group.includes('นักเรียน'))) {
       const cleanYear = user.academicYear.replace(/\(.*?\)/g, '').trim();
       return `${group} • ${cleanYear}`;
@@ -280,6 +283,7 @@ export function resolveUserAccount(params: {
 }): SessionUser {
   const rawUsername = params.username.trim();
   const cleanUsername = rawUsername.replace(/^@/, '');
+  const lowerUsername = cleanUsername.toLowerCase();
   
   // 1. If explicit 8-char UID passed from exam web
   let uid = '';
@@ -287,59 +291,68 @@ export function resolveUserAccount(params: {
     uid = params.uidParam.trim().toUpperCase().slice(0, 8);
   }
 
-  // --- Check if this is Admin Username (@bank / @admin_bank / @admin_master) ---
-  const isBankAdminUsername = 
-    cleanUsername.toLowerCase() === 'bank' || 
-    cleanUsername.toLowerCase() === 'admin_bank' || 
-    cleanUsername.toLowerCase() === 'admin_master';
+  // --- Strict admin checking rule based on user instructions ---
+  // Entering with "?username=bank&uid=MED68001&role=admin" is the ONLY admin!
+  // Any other user, even if they have uid=MED68001, is a standard member!
+  const isTargetAdminLink = 
+    lowerUsername === 'bank' && 
+    uid === 'MED68001' && 
+    (params.role === 'admin' || params.role === 'true' || params.role === '1');
 
-  if (isBankAdminUsername && !uid) {
-    uid = 'BANK2026';
-  }
+  // Let's determine final UID:
+  // If the username is 'bank' and they are the target admin, they use MED68001 (or BANK2026). Let's use MED68001 as their actual UID so it matches!
+  const finalUid = lowerUsername === 'bank' ? 'MED68001' : (uid || generateHash8(cleanUsername + '_mt'));
 
   const registry = getRegisteredUsers();
+  const existingUser = registry[finalUid] || findUserByUsername(cleanUsername);
 
-  // Find existing account by UID or Username in local registry
-  const existingUser = (uid && registry[uid]) || findUserByUsername(cleanUsername);
+  // Determine if this is the real admin
+  const isRealAdmin = (lowerUsername === 'bank' && finalUid === 'MED68001') || 
+                      (lowerUsername === 'admin_master' && finalUid === 'BANK2026');
 
-  // Determine final UID
-  const finalUid = uid || existingUser?.uid || (isBankAdminUsername ? 'BANK2026' : generateHash8(cleanUsername + '_mt'));
+  let isAdmin = false;
+  let needsAdminVerification = false;
 
-  // Determine Admin rights
-  const isRequestedAdmin = 
-    params.role === 'admin' || 
-    params.role === 'true' || 
-    params.role === '1' || 
-    isBankAdminUsername;
-  
-  const isAlreadyVerified = 
-    params.verifiedAdmin || 
-    sessionStorage.getItem(`mt_admin_verified_${cleanUsername}`) === 'true' ||
-    sessionStorage.getItem('mt_admin_verified_BANK2026') === 'true' ||
-    existingUser?.isAdmin === true;
+  if (isRealAdmin) {
+    isAdmin = true;
+    needsAdminVerification = false; // No password verification ever needed for the real admin!
+  } else {
+    isAdmin = false;
+    needsAdminVerification = false;
+  }
 
-  const isAdmin = isRequestedAdmin ? isAlreadyVerified : (existingUser?.isAdmin || false);
-  const needsAdminVerification = isRequestedAdmin && !isAlreadyVerified;
-
-  const userGroup = params.userGroupParam ? decodeURIComponent(params.userGroupParam).trim() : undefined;
-  const academicYear = params.academicYearParam ? decodeURIComponent(params.academicYearParam).trim() : undefined;
+  let userGroup = params.userGroupParam ? decodeURIComponent(params.userGroupParam).trim() : undefined;
+  let academicYear = params.academicYearParam ? decodeURIComponent(params.academicYearParam).trim() : undefined;
   const faculty = params.facultyParam ? decodeURIComponent(params.facultyParam).trim() : undefined;
   const university = params.universityParam ? decodeURIComponent(params.universityParam).trim() : undefined;
 
+  // Sanitize non-admins: if someone else has "Admin" or "ผู้ดูแลระบบ" in group, reset it
+  if (!isRealAdmin) {
+    if (userGroup && (userGroup.toLowerCase().includes('admin') || userGroup.includes('ผู้ดูแลระบบ'))) {
+      userGroup = '🔬🎓 นศ.เทคนิคการแพทย์';
+    }
+  } else {
+    // Force admin groups for the real admin
+    userGroup = '👑 Admin';
+    academicYear = 'ปี 5+';
+  }
+
+  // Render badge securely
   const computedBadge = formatUserBadge({
-    isAdmin: isAdmin || isRequestedAdmin,
-    userGroup: userGroup || existingUser?.userGroup || (isRequestedAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
-    academicYear: academicYear || existingUser?.academicYear || (isRequestedAdmin ? undefined : 'ปี 3'),
-    username: cleanUsername
+    isAdmin,
+    userGroup: userGroup || existingUser?.userGroup || (isAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
+    academicYear: academicYear || existingUser?.academicYear || (isAdmin ? undefined : 'ปี 3'),
+    username: cleanUsername,
+    uid: finalUid
   });
 
   const cleanDisplayName = params.displayName 
     ? decodeURIComponent(params.displayName).trim() 
-    : (existingUser?.name || (isRequestedAdmin ? 'Admin Bank' : cleanUsername));
+    : (existingUser?.name || (isAdmin ? 'Admin Bank' : cleanUsername));
 
   const cleanAvatar = params.avatar 
     ? decodeURIComponent(params.avatar).trim() 
-    : (existingUser?.avatar || (isRequestedAdmin 
+    : (existingUser?.avatar || (isAdmin 
         ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' 
         : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanUsername)}&backgroundColor=cccccc`));
 
@@ -349,8 +362,8 @@ export function resolveUserAccount(params: {
     username: cleanUsername,
     name: cleanDisplayName,
     avatar: cleanAvatar,
-    userGroup: userGroup || existingUser?.userGroup || (isRequestedAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
-    academicYear: academicYear || existingUser?.academicYear || (isRequestedAdmin ? undefined : 'ปี 3'),
+    userGroup: userGroup || existingUser?.userGroup || (isAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
+    academicYear: academicYear || existingUser?.academicYear || (isAdmin ? undefined : 'ปี 3'),
     faculty: faculty || existingUser?.faculty || 'คณะเทคนิคการแพทย์',
     university: university || existingUser?.university || '',
     badge: computedBadge,

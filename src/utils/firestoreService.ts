@@ -12,7 +12,7 @@ import {
   writeBatch 
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Post, SessionUser } from '../types';
+import { Post, SessionUser, Comment } from '../types';
 import { INITIAL_POSTS } from '../data';
 import { DEFAULT_ACTIVE_USERS } from './auth';
 
