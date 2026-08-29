@@ -12,7 +12,8 @@ import { AdminPasswordModal } from './components/AdminPasswordModal';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post } from './types';
 import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel } from './utils/auth';
-import { subscribeToPosts, subscribeToUsers, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore } from './utils/firestoreService';
+import { subscribeToPosts, subscribeToUsers, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, markPostAsDeletedLocally, mergePostsLists } from './utils/firestoreService';
+import { formatRealTime } from './utils/timeUtils';
 import { INITIAL_POSTS } from './data';
 
 // Helper function to extract user from URL search params, hash, or session
@@ -131,11 +132,14 @@ export default function App() {
 
     // 2. Subscribe to Cloud Firestore Posts
     const unsubscribePosts = subscribeToPosts((firestorePosts) => {
-      if (firestorePosts && firestorePosts.length > 0) {
-        setPosts(firestorePosts);
-        try {
-          localStorage.setItem('mtfeed_posts', JSON.stringify(firestorePosts));
-        } catch (e) {}
+      if (firestorePosts !== undefined && firestorePosts !== null) {
+        setPosts(prevPosts => {
+          const merged = mergePostsLists(firestorePosts, prevPosts);
+          try {
+            localStorage.setItem('mtfeed_posts', JSON.stringify(merged));
+          } catch (e) {}
+          return merged;
+        });
       }
     });
 
@@ -147,7 +151,8 @@ export default function App() {
         const saved = localStorage.getItem('mtfeed_posts');
         if (saved) {
           try {
-            setPosts(JSON.parse(saved));
+            const parsed = JSON.parse(saved);
+            setPosts(prevPosts => mergePostsLists(parsed, prevPosts));
           } catch (err) {}
         }
       }
@@ -173,7 +178,8 @@ export default function App() {
             const saved = localStorage.getItem('mtfeed_posts');
             if (saved) {
               try {
-                setPosts(JSON.parse(saved));
+                const parsed = JSON.parse(saved);
+                setPosts(prevPosts => mergePostsLists(parsed, prevPosts));
               } catch (err) {}
             }
           }
@@ -202,15 +208,20 @@ export default function App() {
 
   // Global Posts State
   const [posts, setPosts] = useState<Post[]>(() => {
+    const deletedIds = getDeletedPostIds();
     const saved = localStorage.getItem('mtfeed_posts');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const filtered = parsed.filter((p: Post) => p && p.id && !deletedIds.has(p.id));
+          if (filtered.length > 0) return filtered;
+        }
       } catch (e) {
-        return INITIAL_POSTS;
+        console.error(e);
       }
     }
-    return INITIAL_POSTS;
+    return INITIAL_POSTS.filter(p => !deletedIds.has(p.id));
   });
 
   // Always sync logged in user to Firestore and local registry
@@ -224,9 +235,11 @@ export default function App() {
   // Save posts to localStorage for offline cache
   useEffect(() => {
     try {
-      localStorage.setItem('mtfeed_posts', JSON.stringify(posts));
-      if (mtFeedChannel) {
-        mtFeedChannel.postMessage({ type: 'POSTS_UPDATED' });
+      if (posts && posts.length > 0) {
+        localStorage.setItem('mtfeed_posts', JSON.stringify(posts));
+        if (mtFeedChannel) {
+          mtFeedChannel.postMessage({ type: 'POSTS_UPDATED' });
+        }
       }
     } catch (e) {
       console.error(e);
@@ -319,12 +332,38 @@ export default function App() {
 
   // Admin & User Delete Post Function
   const handleDeletePost = async (postId: string) => {
-    setPosts(prev => prev.filter(p => p.id !== postId));
+    const targetPost = posts.find(p => p.id === postId);
+    if (targetPost) {
+      const isOwner = Boolean(user && (
+        (user.username && targetPost.author.username && user.username.replace(/^@/, '').toLowerCase() === targetPost.author.username.replace(/^@/, '').toLowerCase()) ||
+        (user.uid && targetPost.author.id && user.uid === targetPost.author.id) ||
+        (user.id && targetPost.author.id && user.id === targetPost.author.id)
+      ));
+      const isAdmin = Boolean(user?.isAdmin && !user?.needsAdminVerification);
+      if (!isOwner && !isAdmin) {
+        alert('❌ คุณไม่มีสิทธิ์ลบโพสต์นี้ (เฉพาะเจ้าของโพสต์หรือ Admin เท่านั้น)');
+        return;
+      }
+    }
+
+    markPostAsDeletedLocally(postId);
+
+    setPosts(prev => {
+      const filtered = prev.filter(p => p.id !== postId);
+      try {
+        localStorage.setItem('mtfeed_posts', JSON.stringify(filtered));
+      } catch (e) {}
+      return filtered;
+    });
     await deletePostFromFirestore(postId);
   };
 
   // Admin Delete User Function
   const handleDeleteUser = async (uidOrUsername: string) => {
+    if (!user?.isAdmin) {
+      alert('❌ เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถลบบัญชีสมาชิกได้');
+      return;
+    }
     deleteRegisteredUser(uidOrUsername);
     await deleteUserFromFirestore(uidOrUsername);
     const updatedUsers = getAllRegisteredUsersList();
@@ -338,6 +377,10 @@ export default function App() {
 
   // Admin Clear All Users Function
   const handleClearAllUsers = async () => {
+    if (!user?.isAdmin) {
+      alert('❌ เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถล้างรายชื่อสมาชิกได้');
+      return;
+    }
     clearAllRegisteredUsers(user || undefined);
     await clearAllUsersFromFirestore(user || undefined);
     const updatedUsers = getAllRegisteredUsersList();
@@ -352,8 +395,9 @@ export default function App() {
     contentPreview: string;
     targetPostId?: string;
   }) => {
+    const nowMs = Date.now();
     const newNotif: AppNotification = {
-      id: `mention_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      id: `mention_${nowMs}_${Math.random().toString(36).substr(2, 5)}`,
       type: 'mention',
       title: `@${mentionData.authorName} ได้กล่าวถึงคุณในโพสต์`,
       description: mentionData.contentPreview.length > 90 ? mentionData.contentPreview.slice(0, 90) + '...' : mentionData.contentPreview,
@@ -361,7 +405,8 @@ export default function App() {
       authorAvatar: mentionData.authorAvatar,
       targetPostId: mentionData.targetPostId,
       recipientUsername: mentionData.recipientUsername.toLowerCase(),
-      createdAt: 'เมื่อสักครู่',
+      createdAt: formatRealTime(nowMs),
+      createdAtMs: nowMs,
       read: false
     };
 
@@ -383,14 +428,16 @@ export default function App() {
   const handleReportPost = (postId: string) => {
     const targetPost = posts.find(p => p.id === postId);
     if (targetPost) {
+      const nowMs = Date.now();
       const reportNotif: AppNotification = {
-        id: `report_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        id: `report_${nowMs}_${Math.random().toString(36).substr(2, 5)}`,
         type: 'system',
         title: `🚨 มีรายงานโพสต์ไม่เหมาะสม (${targetPost.author.name})`,
         description: `โพสต์: "${targetPost.content.slice(0, 60)}..." ถูกรายงานโดยผู้ใช้งาน กรุณาตรวจสอบในแดชบอร์ดแอดมิน`,
         targetPostId: postId,
         recipientUsername: 'admin',
-        createdAt: 'เมื่อสักครู่',
+        createdAt: formatRealTime(nowMs),
+        createdAtMs: nowMs,
         read: false
       };
       setNotifications(prev => [reportNotif, ...prev]);

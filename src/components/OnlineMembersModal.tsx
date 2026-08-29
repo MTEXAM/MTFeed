@@ -50,6 +50,10 @@ export function OnlineMembersModal({
   const displayList = Array.from(usersMap.values());
 
   const handleDelete = (userToDelete: SessionUser) => {
+    if (!isAdmin) {
+      alert('❌ เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถลบบัญชีสมาชิกได้');
+      return;
+    }
     if (onDeleteUser) {
       onDeleteUser(userToDelete.uid || userToDelete.username);
       setConfirmDeleteUser(null);
@@ -59,10 +63,15 @@ export function OnlineMembersModal({
   };
 
   const handleClearAll = () => {
+    if (!isAdmin) {
+      alert('❌ เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถล้างรายชื่อสมาชิกได้');
+      setShowClearAllConfirm(false);
+      return;
+    }
     if (onClearAllUsers) {
       onClearAllUsers();
       setShowClearAllConfirm(false);
-      setDeleteSuccessMsg('ล้างรายชื่อสมาชิกในระบบเรียบร้อยแล้ว พร้อมบันทึกสมาชิกใหม่ที่เข้ามา');
+      setDeleteSuccessMsg('ล้างรายชื่อสมาชิกในระบบเรียบร้อยแล้ว (ยกเว้นบัญชีแอดมิน)');
       setTimeout(() => setDeleteSuccessMsg(null), 4000);
     }
   };
@@ -204,19 +213,22 @@ export function OnlineMembersModal({
           </div>
         )}
 
-        {/* Confirm Clear All Overlay */}
-        {showClearAllConfirm && (
+        {/* Confirm Clear All Overlay (Admin Only) */}
+        {showClearAllConfirm && isAdmin && (
           <div className="p-4 bg-red-100 border-b border-red-300 animate-in fade-in">
             <div className="flex items-start space-x-3">
               <div className="p-2 bg-red-200 text-red-700 rounded-xl flex-shrink-0">
                 <AlertTriangle className="w-5 h-5" />
               </div>
               <div className="flex-1">
-                <p className="text-sm font-bold text-red-950">
-                  ยืนยันล้างรายชื่อสมาชิกทั้งหมด?
-                </p>
+                <div className="flex items-center space-x-2">
+                  <p className="text-sm font-bold text-red-950">
+                    👑 ยืนยันล้างรายชื่อสมาชิกทั้งหมด?
+                  </p>
+                  <span className="text-[10px] bg-red-600 text-white font-bold px-1.5 py-0.5 rounded">เฉพาะ Admin</span>
+                </div>
                 <p className="text-xs text-red-800 mt-1">
-                  ระบบจะลบข้อมูลสมาชิกตัวอย่างออกทั้งหมด เพื่อให้เริ่มบันทึกเฉพาะบัญชีใหม่ที่เข้ามาใช้งานจริงเท่านั้น
+                  ระบบจะลบข้อมูลสมาชิกที่บันทึกไว้ทั้งหมดออกจากระบบ เพื่อเริ่มต้นบันทึกใหม่เฉพาะบัญชีใหม่ที่เข้ามาจริง (บัญชีแอดมินของคุณจะยังคงอยู่)
                 </p>
                 <div className="mt-3 flex space-x-2">
                   <button

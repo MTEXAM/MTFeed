@@ -39,6 +39,7 @@ export interface AppNotification {
   targetTag?: string;
   recipientUsername?: string; // target recipient username
   createdAt: string;
+  createdAtMs?: number;
   read: boolean;
 }
 
@@ -47,6 +48,7 @@ export interface Comment {
   author: User;
   content: string;
   createdAt: string;
+  createdAtMs?: number;
 }
 
 export interface PollOption {
@@ -67,6 +69,7 @@ export interface Post {
   };
   tags: string[];
   createdAt: string;
+  createdAtMs?: number;
   stats: {
     replies: number;
     reposts: number;

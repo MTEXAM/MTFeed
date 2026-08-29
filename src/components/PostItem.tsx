@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, Repeat2, Heart, Bookmark, Share, Send, MoreHorizontal, Trash2, Flag, ExternalLink } from 'lucide-react';
 import { Post } from '../types';
 import { getBadgeStyle } from '../utils/auth';
+import { formatRelativeOrRealTime, formatFullDateTime } from '../utils/timeUtils';
 
 export function PostItem({ 
   post, 
@@ -20,7 +21,7 @@ export function PostItem({
   onComment?: (postId: string, content: string) => void;
   onDelete?: (postId: string) => void;
   onReport?: (postId: string) => void;
-  user: { username: string; isAdmin: boolean; needsAdminVerification?: boolean } | null;
+  user: { username: string; isAdmin: boolean; needsAdminVerification?: boolean; uid?: string; id?: string; name?: string; avatar?: string } | null;
   onSelectTag?: (tag: string) => void;
   onExternalLinkClick?: (url: string) => void;
 }) {
@@ -44,7 +45,12 @@ export function PostItem({
   const isBookmarked = post.userInteractions?.bookmarked;
   const votedOptionId = post.userInteractions?.votedOptionId;
 
-  const isOwner = user?.username === post.author.username;
+  const currentUser = user as any;
+  const isOwner = Boolean(currentUser && (
+    (currentUser.username && post.author.username && currentUser.username.replace(/^@/, '').toLowerCase() === post.author.username.replace(/^@/, '').toLowerCase()) ||
+    (currentUser.uid && post.author.id && currentUser.uid === post.author.id) ||
+    (currentUser.id && post.author.id && currentUser.id === post.author.id)
+  ));
   const isVerifiedAdmin = Boolean(user?.isAdmin && !user?.needsAdminVerification);
   const canDelete = isVerifiedAdmin || isOwner;
   const canReport = Boolean(user && !isOwner && !isVerifiedAdmin);
@@ -195,7 +201,9 @@ export function PostItem({
                 );
               })()}
               <span className="text-xs text-gray-400">·</span>
-              <span className="text-xs text-gray-500">{post.createdAt}</span>
+              <span className="text-xs text-gray-500" title={formatFullDateTime(post.createdAtMs)}>
+                {formatRelativeOrRealTime(post.createdAtMs, post.createdAt)}
+              </span>
             </div>
             {(canDelete || canReport) && (
               <div className="relative" ref={menuRef}>
@@ -379,7 +387,9 @@ export function PostItem({
                               </>
                             );
                           })()}
-                          <span className="text-xs text-gray-400">{comment.createdAt}</span>
+                          <span className="text-xs text-gray-400" title={formatFullDateTime(comment.createdAtMs)}>
+                            {formatRelativeOrRealTime(comment.createdAtMs, comment.createdAt)}
+                          </span>
                         </div>
                         <p className="text-sm text-gray-800 mt-0.5 whitespace-pre-wrap">{renderContentWithLinks(comment.content)}</p>
                       </div>

@@ -3,7 +3,8 @@ import { PostComposer } from './PostComposer';
 import { PostItem } from './PostItem';
 import { MOCK_USERS } from '../data';
 import { Post, Comment, SessionUser } from '../types';
-import { deletePostFromFirestore, savePostToFirestore } from '../utils/firestoreService';
+import { deletePostFromFirestore, savePostToFirestore, markPostAsDeletedLocally } from '../utils/firestoreService';
+import { formatRealTime } from '../utils/timeUtils';
 
 export function Feed({ 
   posts = [],
@@ -67,6 +68,7 @@ export function Feed({
     const tagsFromContent = content.match(/#[\w\u0E00-\u0E7F]+/g) || [];
 
     const newPostId = `new_${Date.now()}`;
+    const createdAtMs = Date.now();
     const newPost: Post = {
       id: newPostId,
       author,
@@ -74,7 +76,8 @@ export function Feed({
       image,
       poll,
       tags: tagsFromContent,
-      createdAt: 'เมื่อสักครู่',
+      createdAt: formatRealTime(createdAtMs),
+      createdAtMs,
       isAnonymous,
       stats: { replies: 0, reposts: 0, likes: 0, bookmarks: 0 },
       comments: []
@@ -103,8 +106,30 @@ export function Feed({
   };
 
   const handleDeletePost = (postId: string) => {
+    const postToDelete = posts.find(p => p.id === postId);
+    if (postToDelete) {
+      const isOwner = Boolean(user && (
+        (user.username && postToDelete.author.username && user.username.replace(/^@/, '').toLowerCase() === postToDelete.author.username.replace(/^@/, '').toLowerCase()) ||
+        (user.uid && postToDelete.author.id && user.uid === postToDelete.author.id) ||
+        (user.id && postToDelete.author.id && user.id === postToDelete.author.id)
+      ));
+      const isAdmin = Boolean(user?.isAdmin && !user?.needsAdminVerification);
+      if (!isOwner && !isAdmin) {
+        alert('❌ คุณไม่มีสิทธิ์ลบโพสต์นี้ (เฉพาะเจ้าของโพสต์หรือ Admin เท่านั้น)');
+        return;
+      }
+    }
+
+    markPostAsDeletedLocally(postId);
+
     if (setPosts) {
-      setPosts(prev => prev.filter(p => p.id !== postId));
+      setPosts(prev => {
+        const updated = prev.filter(p => p.id !== postId);
+        try {
+          localStorage.setItem('mtfeed_posts', JSON.stringify(updated));
+        } catch (e) {}
+        return updated;
+      });
     }
     deletePostFromFirestore(postId);
   };
@@ -143,11 +168,13 @@ export function Feed({
       isAdmin: user.isAdmin
     };
 
+    const commentTimeMs = Date.now();
     const newComment: Comment = {
-      id: `comment_${Date.now()}`,
+      id: `comment_${commentTimeMs}`,
       author,
       content,
-      createdAt: 'เมื่อสักครู่'
+      createdAt: formatRealTime(commentTimeMs),
+      createdAtMs: commentTimeMs
     };
 
     const targetPost = posts.find(p => p.id === postId);

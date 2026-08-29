@@ -54,6 +54,7 @@ export const INITIAL_POSTS: Post[] = [
     image: 'https://images.unsplash.com/photo-1579154204601-01588f351e67?auto=format&fit=crop&q=80&w=1000',
     tags: ['#โลหิตวิทยา', '#สรุปอ่านสอบ', '#สอบสภาครั้งที่1'],
     createdAt: '2 ชั่วโมงที่แล้ว',
+    createdAtMs: Date.now() - 7200000,
     stats: { replies: 12, reposts: 45, likes: 320, bookmarks: 156 }
   },
   {
@@ -73,6 +74,7 @@ export const INITIAL_POSTS: Post[] = [
     },
     tags: ['#เคมีคลินิก', '#ถามโจทย์'],
     createdAt: '4 ชั่วโมงที่แล้ว',
+    createdAtMs: Date.now() - 14400000,
     stats: { replies: 5, reposts: 2, likes: 18, bookmarks: 4 }
   },
   {
@@ -81,6 +83,7 @@ export const INITIAL_POSTS: Post[] = [
     content: 'อาจารย์บอกว่าจุลชีวะออกเยอะมาก อ่านยังไงให้จำเชื้อแกรมลบได้หมด ใครมีทริคเด็ดๆ แชร์หน่อยครับ จะตายแล้ววว 😭🦠',
     tags: ['#จุลชีววิทยา', '#บ่นเตรียมสอบ'],
     createdAt: '5 ชั่วโมงที่แล้ว',
+    createdAtMs: Date.now() - 18000000,
     stats: { replies: 28, reposts: 15, likes: 89, bookmarks: 12 }
   }
 ];

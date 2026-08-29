@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Bell, Heart, MessageSquare, ShieldCheck, Sparkles, AtSign, Check, CheckCheck, Trash2 } from 'lucide-react';
 import { AppNotification, SessionUser } from '../types';
+import { formatRelativeOrRealTime } from '../utils/timeUtils';
 
 export function NotificationsModal({
   isOpen,
@@ -175,7 +176,7 @@ export function NotificationsModal({
                       {item.title}
                     </p>
                     <span className="text-[10px] text-gray-400 flex-shrink-0 ml-2">
-                      {item.createdAt}
+                      {formatRelativeOrRealTime(item.createdAtMs, item.createdAt)}
                     </span>
                   </div>
                   <p className="text-xs text-gray-600 mt-0.5 line-clamp-2 leading-relaxed">

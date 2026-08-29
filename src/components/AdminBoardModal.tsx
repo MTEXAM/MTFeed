@@ -31,6 +31,10 @@ export function AdminBoardModal({
   const reportedPosts = posts.filter(p => p.isReported);
 
   const handleDeleteUser = (user: SessionUser) => {
+    if (!currentUser?.isAdmin) {
+      alert('❌ เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถดำเนินการนี้ได้');
+      return;
+    }
     if (onDeleteUser) {
       onDeleteUser(user.uid || user.username);
       setConfirmDeleteUser(null);
@@ -40,6 +44,11 @@ export function AdminBoardModal({
   };
 
   const handleClearAll = () => {
+    if (!currentUser?.isAdmin) {
+      alert('❌ เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถดำเนินการนี้ได้');
+      setShowClearAllConfirm(false);
+      return;
+    }
     if (onClearAllUsers) {
       onClearAllUsers();
       setShowClearAllConfirm(false);
