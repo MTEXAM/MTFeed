@@ -1,7 +1,7 @@
 import React from 'react';
 import { BookA, MessageSquare, Bell, Search, Settings, User, Shield, Award } from 'lucide-react';
 import { SessionUser } from '../types';
-import { getBadgeStyle, formatUserBadge } from '../utils/auth';
+import { getBadgeStyle, formatUserBadge, maskUid } from '../utils/auth';
 
 export function Navbar({ 
   user, 
@@ -129,7 +129,7 @@ export function Navbar({
                       <div className="flex items-center space-x-2 mt-1">
                         <span className="text-xs text-gray-500 truncate">@{user.username}</span>
                         <span className="text-[10px] font-mono bg-red-50 text-red-700 border border-red-200 px-1.5 py-0.5 rounded font-semibold" title="รหัสความปลอดภัยประจำตัว">
-                          UID: #{user.uid}
+                          UID: #{maskUid(user.uid, user)}
                         </span>
                       </div>
                       {badgeText && (

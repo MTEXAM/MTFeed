@@ -11,7 +11,7 @@ import { ExternalLinkModal } from './components/ExternalLinkModal';
 import { AdminPasswordModal } from './components/AdminPasswordModal';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post } from './types';
-import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel } from './utils/auth';
+import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid } from './utils/auth';
 import { subscribeToPosts, subscribeToUsers, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, markPostAsDeletedLocally, mergePostsLists } from './utils/firestoreService';
 import { formatRealTime } from './utils/timeUtils';
 import { INITIAL_POSTS } from './data';
@@ -466,7 +466,7 @@ export default function App() {
             <ShieldCheck className="w-5 h-5 flex-shrink-0 text-yellow-300" />
             <span className="font-medium truncate">
               เข้าสู่ระบบด้วยรหัสปลอดภัย 8 หลัก: <b>{user.name || user.username}</b> (@{user.username}) • 
-              <span className="ml-1 font-mono bg-white/25 px-2 py-0.5 rounded text-xs">UID: #{user.uid}</span>
+              <span className="ml-1 font-mono bg-white/25 px-2 py-0.5 rounded text-xs">UID: #{maskUid(user.uid, user)}</span>
               {user.isAdmin && ' 👑 Admin'}
             </span>
           </div>

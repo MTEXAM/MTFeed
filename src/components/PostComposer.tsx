@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Image as ImageIcon, BarChart2, Hash, Ghost, Smile, X, AtSign, Link2 } from 'lucide-react';
 import { PollOption, SessionUser } from '../types';
+import { maskUid } from '../utils/auth';
 
 export function PostComposer({ 
   onPost,
@@ -313,7 +314,7 @@ export function PostComposer({
                             />
                             <div className="min-w-0 flex-1 truncate">
                               <p className="text-xs font-bold text-gray-900 truncate">{u.name || u.username}</p>
-                              <p className="text-[10px] text-gray-500 truncate">@{u.username} • #{u.uid}</p>
+                              <p className="text-[10px] text-gray-500 truncate">@{u.username} • #{maskUid(u.uid, user)}</p>
                             </div>
                           </button>
                         ))

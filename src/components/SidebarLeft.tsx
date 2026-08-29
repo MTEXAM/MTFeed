@@ -2,7 +2,7 @@ import React from 'react';
 import { MOCK_CATEGORIES } from '../data';
 import * as Icons from 'lucide-react';
 import { SessionUser } from '../types';
-import { getBadgeStyle, formatUserBadge } from '../utils/auth';
+import { getBadgeStyle, formatUserBadge, maskUid } from '../utils/auth';
 
 export function SidebarLeft({ 
   activeCategory, 
@@ -41,7 +41,7 @@ export function SidebarLeft({
                 <div className="flex items-center space-x-1.5 mt-0.5">
                   <span className="text-[11px] text-gray-500 truncate">@{currentUser.username}</span>
                   <span className="text-[9px] font-mono bg-gray-100 text-gray-600 px-1 py-0.2 rounded border border-gray-200">
-                    #{currentUser.uid}
+                    #{maskUid(currentUser.uid, currentUser)}
                   </span>
                 </div>
               </div>
@@ -66,7 +66,7 @@ export function SidebarLeft({
                 <Icons.ShieldCheck className="w-3 h-3 mr-1 text-green-500" />
                 ซิงค์สถานะจาก MTExam
               </span>
-              <span className="font-mono text-[9px]">#{currentUser.uid}</span>
+              <span className="font-mono text-[9px]">#{maskUid(currentUser.uid, currentUser)}</span>
             </div>
           </div>
         )}

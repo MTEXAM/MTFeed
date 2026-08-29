@@ -212,6 +212,23 @@ export const ACADEMIC_YEARS = [
   'ปี 5+ / จบแล้ว'
 ] as const;
 
+export function maskUid(uid: string | undefined, currentUser?: { isAdmin?: boolean; uid?: string } | null): string {
+  if (!uid) return '';
+  // If the viewer is an Admin, they can see anyone's UID
+  if (currentUser?.isAdmin) {
+    return uid;
+  }
+  // If the viewer is the user themselves (matching UID), they can see their own UID
+  if (currentUser && currentUser.uid === uid) {
+    return uid;
+  }
+  // Otherwise, mask the UID: keep first character, mask the middle, keep last character
+  if (uid.length >= 3) {
+    return uid[0] + '*'.repeat(uid.length - 2) + uid[uid.length - 1];
+  }
+  return '********';
+}
+
 export function formatUserBadge(user: {
   isAdmin?: boolean;
   userGroup?: string;
@@ -378,7 +395,7 @@ export function resolveUserAccount(params: {
 
 // Generate default notifications for user
 export function getInitialNotifications(user: SessionUser | null): AppNotification[] {
-  const uidStr = user ? user.uid : 'MT2026';
+  const uidStr = user ? maskUid(user.uid, user) : 'MT2026';
   const nameStr = user ? (user.name || user.username) : 'เพื่อนๆ สมาชิก';
 
   return [

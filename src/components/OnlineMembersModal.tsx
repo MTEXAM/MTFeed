@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Circle, ShieldCheck, Sparkles, MessageSquare, Trash2, UserX, AlertTriangle, Check, Lock, RotateCcw } from 'lucide-react';
 import { SessionUser } from '../types';
-import { getBadgeStyle, formatUserBadge } from '../utils/auth';
+import { getBadgeStyle, formatUserBadge, maskUid } from '../utils/auth';
 
 export function OnlineMembersModal({
   isOpen,
@@ -192,7 +192,7 @@ export function OnlineMembersModal({
                   ยืนยันการลบบัญชี @{confirmDeleteUser.username}?
                 </p>
                 <p className="text-xs text-red-700 mt-1">
-                  ชื่อ: {confirmDeleteUser.name || confirmDeleteUser.username} • UID: #{confirmDeleteUser.uid}
+                  ชื่อ: {confirmDeleteUser.name || confirmDeleteUser.username} • UID: #{maskUid(confirmDeleteUser.uid, currentUser)}
                 </p>
                 <div className="mt-3 flex space-x-2">
                   <button
@@ -294,7 +294,7 @@ export function OnlineMembersModal({
                       <div className="flex items-center space-x-2 mt-0.5 flex-wrap gap-y-0.5 text-xs text-gray-500">
                         <span className="truncate">@{member.username}</span>
                         <span className="text-[10px] font-mono bg-gray-100 text-gray-600 px-1.5 py-0.2 rounded border border-gray-200">
-                          UID: #{member.uid}
+                          UID: #{maskUid(member.uid, currentUser)}
                         </span>
                         {educationInfo && (
                           <span className="text-gray-400 text-[11px] truncate max-w-[200px]" title={educationInfo}>

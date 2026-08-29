@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, ShieldAlert, Trash2, Users, AlertTriangle, ShieldCheck, Check } from 'lucide-react';
 import { Post, SessionUser } from '../types';
+import { maskUid } from '../utils/auth';
 
 export function AdminBoardModal({ 
   isOpen, 
@@ -123,7 +124,7 @@ export function AdminBoardModal({
                   ยืนยันการลบและแบนบัญชี @{confirmDeleteUser.username}?
                 </p>
                 <p className="text-xs text-red-700 mt-1">
-                  รหัส UID: #{confirmDeleteUser.uid} • การดำเนินการนี้จะลบบัญชีผู้ใช้นี้ออกจากระบบ
+                  รหัส UID: #{maskUid(confirmDeleteUser.uid, currentUser)} • การดำเนินการนี้จะลบบัญชีผู้ใช้นี้ออกจากระบบ
                 </p>
                 <div className="mt-3 flex space-x-2">
                   <button
@@ -269,7 +270,7 @@ export function AdminBoardModal({
                               <span>@{user.username}</span>
                               <span>•</span>
                               <span className="font-mono bg-gray-100 px-1.5 py-0.2 rounded border text-[11px] font-semibold text-gray-700">
-                                UID: #{user.uid}
+                                UID: #{maskUid(user.uid, currentUser)}
                               </span>
                             </div>
                           </div>

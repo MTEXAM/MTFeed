@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Bell, Heart, MessageSquare, ShieldCheck, Sparkles, AtSign, Check, CheckCheck, Trash2 } from 'lucide-react';
 import { AppNotification, SessionUser } from '../types';
 import { formatRelativeOrRealTime } from '../utils/timeUtils';
+import { maskUid } from '../utils/auth';
 
 export function NotificationsModal({
   isOpen,
@@ -70,7 +71,7 @@ export function NotificationsModal({
                 )}
               </div>
               <p className="text-xs text-red-100 mt-0.5">
-                {user ? `อัปเดตกิจกรรมของ @${user.username} (UID: #${user.uid})` : 'ความเคลื่อนไหวและข่าวสารล่าสุด'}
+                {user ? `อัปเดตกิจกรรมของ @${user.username} (UID: #${maskUid(user.uid, user)})` : 'ความเคลื่อนไหวและข่าวสารล่าสุด'}
               </p>
             </div>
           </div>
