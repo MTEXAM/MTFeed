@@ -208,15 +208,13 @@ export function AdminBoardModal({
                           </div>
                         </div>
 
-                        {!isSelf && (
-                          <button
-                            onClick={() => setConfirmDeleteUser(user)}
-                            className="inline-flex items-center px-3 py-1.5 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white rounded-lg text-xs font-bold transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 mr-1" />
-                            ลบผู้ใช้
-                          </button>
-                        )}
+                        <button
+                          onClick={() => setConfirmDeleteUser(user)}
+                          className="inline-flex items-center px-3 py-1.5 bg-red-100 hover:bg-red-600 text-red-600 hover:text-white rounded-lg text-xs font-bold transition-colors shadow-2xs"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 mr-1" />
+                          ลบบัญชีผู้ใช้
+                        </button>
                       </div>
                     );
                   })}

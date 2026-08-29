@@ -11,7 +11,7 @@ import { ExternalLinkModal } from './components/ExternalLinkModal';
 import { AdminPasswordModal } from './components/AdminPasswordModal';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post } from './types';
-import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, mtFeedChannel } from './utils/auth';
+import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, mtFeedChannel } from './utils/auth';
 import { INITIAL_POSTS } from './data';
 
 // Helper function to extract user from URL search params, hash, or session
@@ -233,10 +233,11 @@ export default function App() {
     }
   }, []);
 
-  const handleLogin = (username: string, isAdmin: boolean) => {
+  const handleLogin = (username: string, isAdmin: boolean, verifiedAdmin?: boolean) => {
     const userData = resolveUserAccount({
       username,
-      role: isAdmin ? 'admin' : undefined
+      role: isAdmin ? 'admin' : undefined,
+      verifiedAdmin
     });
     setUser(userData);
     setRegisteredUsers(getAllRegisteredUsersList());
@@ -276,6 +277,13 @@ export default function App() {
     if (user && (user.uid === uidOrUsername || user.username.toLowerCase() === uidOrUsername.toLowerCase())) {
       handleLogout();
     }
+  };
+
+  // Admin Clear All Users Function
+  const handleClearAllUsers = () => {
+    clearAllRegisteredUsers(user || undefined);
+    const updatedUsers = getAllRegisteredUsersList();
+    setRegisteredUsers(updatedUsers);
   };
 
   // Trigger @mention notification
@@ -490,6 +498,18 @@ export default function App() {
         currentUser={user}
         registeredUsers={registeredUsers}
         onDeleteUser={handleDeleteUser}
+        onClearAllUsers={handleClearAllUsers}
+        onVerifyAdmin={(pwd) => {
+          if (pwd === 'Bank2546') {
+            if (user) {
+              const updated = { ...user, isAdmin: true, needsAdminVerification: false };
+              setUser(updated);
+              localStorage.setItem('mtfeed_user', JSON.stringify(updated));
+            }
+            return true;
+          }
+          return false;
+        }}
         onSelectUserForPost={(mention) => {
           setExternalSharedText(mention);
         }}

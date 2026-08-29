@@ -87,15 +87,13 @@ export function getRegisteredUsers(): Record<string, SessionUser> {
     const raw = localStorage.getItem(REGISTRY_KEY);
     if (!raw) {
       localStorage.setItem(REGISTRY_KEY, JSON.stringify(DEFAULT_ACTIVE_USERS));
-      return DEFAULT_ACTIVE_USERS;
+      return { ...DEFAULT_ACTIVE_USERS };
     }
     const parsed = JSON.parse(raw);
-    // Ensure default active users are present if registry is sparse
-    const merged = { ...DEFAULT_ACTIVE_USERS, ...parsed };
-    return merged;
+    return parsed;
   } catch (e) {
     console.error('Failed to load accounts registry', e);
-    return DEFAULT_ACTIVE_USERS;
+    return { ...DEFAULT_ACTIVE_USERS };
   }
 }
 
@@ -116,7 +114,7 @@ export function findUserByUsername(username: string): SessionUser | null {
   const registry = getRegisteredUsers();
   const clean = username.trim().toLowerCase().replace(/^@/, '');
   for (const uid in registry) {
-    if (registry[uid].username.toLowerCase() === clean) {
+    if (registry[uid].username && registry[uid].username.toLowerCase() === clean) {
       return registry[uid];
     }
   }
@@ -126,25 +124,24 @@ export function findUserByUsername(username: string): SessionUser | null {
 export function deleteRegisteredUser(uidOrUsername: string): boolean {
   try {
     const registry = getRegisteredUsers();
-    const clean = uidOrUsername.trim().toLowerCase().replace(/^@/, '');
-    let deleted = false;
+    const clean = uidOrUsername.trim().toLowerCase().replace(/^@/, '').replace(/^#/, '');
+    let deletedKey: string | null = null;
     
-    // Check if key is UID
-    if (registry[uidOrUsername.toUpperCase()]) {
-      delete registry[uidOrUsername.toUpperCase()];
-      deleted = true;
-    } else {
-      // Or find by username
-      for (const uid in registry) {
-        if (registry[uid].username.toLowerCase() === clean || registry[uid].uid.toLowerCase() === clean) {
-          delete registry[uid];
-          deleted = true;
-          break;
-        }
+    for (const key in registry) {
+      const u = registry[key];
+      if (
+        key.toLowerCase() === clean ||
+        (u.uid && u.uid.toLowerCase().replace(/^#/, '') === clean) ||
+        (u.username && u.username.toLowerCase().replace(/^@/, '') === clean) ||
+        (u.id && u.id.toLowerCase() === clean)
+      ) {
+        deletedKey = key;
+        delete registry[key];
+        break;
       }
     }
 
-    if (deleted) {
+    if (deletedKey) {
       localStorage.setItem(REGISTRY_KEY, JSON.stringify(registry));
       if (mtFeedChannel) {
         mtFeedChannel.postMessage({ type: 'USER_REGISTERED' });
@@ -155,6 +152,35 @@ export function deleteRegisteredUser(uidOrUsername: string): boolean {
   } catch (e) {
     console.error('Failed to delete user', e);
     return false;
+  }
+}
+
+export function clearAllRegisteredUsers(keepUser?: SessionUser): void {
+  try {
+    const newRegistry: Record<string, SessionUser> = {};
+    if (keepUser) {
+      newRegistry[keepUser.uid] = keepUser;
+    } else {
+      const defaultAdmin: SessionUser = {
+        id: 'BANK2026',
+        uid: 'BANK2026',
+        username: 'admin_bank',
+        name: 'Admin Bank',
+        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5',
+        isAdmin: true,
+        userGroup: '👑 Admin',
+        academicYear: 'ปี 5+',
+        faculty: 'คณะเทคนิคการแพทย์',
+        badge: '👑 Admin'
+      };
+      newRegistry['BANK2026'] = defaultAdmin;
+    }
+    localStorage.setItem(REGISTRY_KEY, JSON.stringify(newRegistry));
+    if (mtFeedChannel) {
+      mtFeedChannel.postMessage({ type: 'USER_REGISTERED' });
+    }
+  } catch (e) {
+    console.error('Failed to clear users registry', e);
   }
 }
 
@@ -239,6 +265,7 @@ export function resolveUserAccount(params: {
   academicYearParam?: string | null;
   facultyParam?: string | null;
   universityParam?: string | null;
+  verifiedAdmin?: boolean;
 }): SessionUser {
   const cleanUsername = params.username.trim().replace(/^@/, '');
   
@@ -259,9 +286,12 @@ export function resolveUserAccount(params: {
   }
 
   // --- Admin Password Verification (Bank2546) ---
-  const isRequestedAdmin = params.role === 'admin' || params.role === 'true' || params.role === '1' || cleanUsername.toLowerCase() === 'bank';
-  let isAdmin = false;
-  let needsAdminVerification = isRequestedAdmin;
+  const isRequestedAdmin = params.role === 'admin' || params.role === 'true' || params.role === '1' || cleanUsername.toLowerCase() === 'bank' || cleanUsername.toLowerCase() === 'admin_bank';
+  
+  // If verifiedAdmin is passed explicitly or saved in sessionStorage
+  const isAlreadyVerified = params.verifiedAdmin || sessionStorage.getItem(`mt_admin_verified_${cleanUsername}`) === 'true';
+  const isAdmin = isRequestedAdmin && isAlreadyVerified;
+  const needsAdminVerification = isRequestedAdmin && !isAlreadyVerified;
 
   const userGroup = params.userGroupParam ? decodeURIComponent(params.userGroupParam).trim() : undefined;
   const academicYear = params.academicYearParam ? decodeURIComponent(params.academicYearParam).trim() : undefined;
@@ -269,7 +299,7 @@ export function resolveUserAccount(params: {
   const university = params.universityParam ? decodeURIComponent(params.universityParam).trim() : undefined;
 
   const computedBadge = formatUserBadge({
-    isAdmin: isRequestedAdmin || isAdmin,
+    isAdmin: isAdmin || isRequestedAdmin,
     userGroup: userGroup || (isRequestedAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
     academicYear: academicYear || (isRequestedAdmin ? undefined : 'ปี 3'),
     username: cleanUsername
@@ -288,7 +318,7 @@ export function resolveUserAccount(params: {
       faculty: faculty || existing.faculty,
       university: university || existing.university,
       badge: computedBadge,
-      isAdmin: isRequestedAdmin ? false : existing.isAdmin,
+      isAdmin: isAdmin ? true : (isRequestedAdmin ? false : existing.isAdmin),
       needsAdminVerification
     };
     saveRegisteredUser(updatedUser);
@@ -307,7 +337,7 @@ export function resolveUserAccount(params: {
       faculty: faculty || existingByUsername.faculty,
       university: university || existingByUsername.university,
       badge: computedBadge,
-      isAdmin: isRequestedAdmin ? false : existingByUsername.isAdmin,
+      isAdmin: isAdmin ? true : (isRequestedAdmin ? false : existingByUsername.isAdmin),
       needsAdminVerification
     };
     saveRegisteredUser(updatedUser);
@@ -332,12 +362,12 @@ export function resolveUserAccount(params: {
     username: cleanUsername,
     name: cleanDisplayName,
     avatar: cleanAvatar,
-    userGroup: userGroup || (isRequestedAdmin ? 'ผู้ดูแลระบบ' : '🔬🎓 นศ.เทคนิคการแพทย์'),
+    userGroup: userGroup || (isRequestedAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
     academicYear: academicYear || (isRequestedAdmin ? undefined : 'ปี 3'),
     faculty: faculty || 'คณะเทคนิคการแพทย์',
     university: university || '',
     badge: computedBadge,
-    isAdmin: false,
+    isAdmin: isAdmin,
     needsAdminVerification,
     joinedAt: new Date().toLocaleDateString('th-TH')
   };

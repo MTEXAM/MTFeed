@@ -8,7 +8,7 @@ export function AuthModal({
 }: { 
   isOpen: boolean; 
   onClose: () => void; 
-  onLogin: (username: string, isAdmin: boolean) => void;
+  onLogin: (username: string, isAdmin: boolean, verifiedAdmin?: boolean) => void;
 }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -17,10 +17,19 @@ export function AuthModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username === 'bank' && password === 'Bank2546') {
-      onLogin(username, true);
+    const cleanUser = username.trim() || 'user1';
+    const isAdminPassword = password.trim() === 'Bank2546';
+    const isBankAdmin = cleanUser.toLowerCase() === 'bank' || cleanUser.toLowerCase() === 'admin_bank' || cleanUser.toLowerCase() === 'admin';
+    
+    if (isAdminPassword || isBankAdmin) {
+      if (isAdminPassword) {
+        sessionStorage.setItem(`mt_admin_verified_${cleanUser}`, 'true');
+        onLogin(cleanUser, true, true);
+      } else {
+        onLogin(cleanUser, true, false);
+      }
     } else {
-      onLogin(username || 'user1', false);
+      onLogin(cleanUser, false, false);
     }
     onClose();
   };
