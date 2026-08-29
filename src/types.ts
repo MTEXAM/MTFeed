@@ -18,6 +18,7 @@ export interface SessionUser {
   avatar?: string;
   email?: string;
   isAdmin: boolean;
+  needsAdminVerification?: boolean;
   userGroup?: string;
   academicYear?: string;
   faculty?: string;

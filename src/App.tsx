@@ -8,6 +8,7 @@ import { OnlineMembersModal } from './components/OnlineMembersModal';
 import { NotificationsModal } from './components/NotificationsModal';
 import { AdminBoardModal } from './components/AdminBoardModal';
 import { ExternalLinkModal } from './components/ExternalLinkModal';
+import { AdminPasswordModal } from './components/AdminPasswordModal';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post } from './types';
 import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser } from './utils/auth';
@@ -428,6 +429,20 @@ export default function App() {
         onDeleteUser={handleDeleteUser}
         currentUser={user}
       />
+
+      {user?.needsAdminVerification && (
+        <AdminPasswordModal
+          username={user.username}
+          onSuccess={() => {
+            setUser(prev => prev ? { ...prev, needsAdminVerification: false, isAdmin: true } : null);
+          }}
+          onCancel={() => {
+            localStorage.removeItem('mtfeed_user');
+            setUser(null);
+            window.location.search = '';
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -191,6 +191,7 @@ export function resolveUserAccount(params: {
 
   // --- Admin Password Verification (Bank2546) ---
   let isAdmin = params.role === 'admin' || params.role === 'true' || params.role === '1' || cleanUsername.toLowerCase() === 'bank';
+  let needsAdminVerification = false;
   
   if (isAdmin) {
     // Check if admin password already verified in sessionStorage for this session
@@ -198,21 +199,7 @@ export function resolveUserAccount(params: {
     const isAlreadyVerified = sessionStorage.getItem(adminSessionKey) === 'true';
 
     if (!isAlreadyVerified) {
-      let verified = false;
-      while (!verified) {
-        const passwordInput = window.prompt(`🔒 [MTFeed Strict Security] กรุณากรอกรหัสผ่าน Admin สำหรับผู้ใช้ "${cleanUsername}" (ต้องใส่รหัส Bank2546 เท่านั้นจึงจะเข้าใช้งานได้):`, "");
-        if (passwordInput === null) {
-          alert('❌ คุณยกเลิกการยืนยันรหัสผ่าน Admin! ระบบปฏิเสธการเข้าสู่ระบบโดยเด็ดขาด');
-          throw new Error('Admin authentication cancelled');
-        }
-        if (passwordInput.trim() === 'Bank2546') {
-          sessionStorage.setItem(adminSessionKey, 'true');
-          alert('✅ ยืนยันรหัสผ่าน Admin สำเร็จ!');
-          verified = true;
-        } else {
-          alert('❌ รหัสผ่าน Admin ไม่ถูกต้อง! ไม่อาจเข้าสู่ระบบได้หากไม่ใส่รหัสถูกต้อง กรุณาลองใหม่อีกครั้ง');
-        }
-      }
+      needsAdminVerification = true;
     }
   }
 
