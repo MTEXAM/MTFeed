@@ -52,7 +52,11 @@ export function Feed({
           name: user.name || (user.isAdmin ? 'Admin' : user.username), 
           username: user.username, 
           avatar: user.avatar || (user.isAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.username)}&backgroundColor=cccccc`),
-          badge: user.isAdmin ? '👑 Admin' : undefined
+          badge: user.badge || (user.isAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
+          userGroup: user.userGroup,
+          academicYear: user.academicYear,
+          faculty: user.faculty,
+          university: user.university
         };
 
     // Automatically extract hashtags from content if any
@@ -122,7 +126,11 @@ export function Feed({
       name: user.name || (user.isAdmin ? 'Admin' : user.username), 
       username: user.username, 
       avatar: user.avatar || (user.isAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}&backgroundColor=cccccc`),
-      badge: user.isAdmin ? '👑 Admin' : undefined
+      badge: user.badge || (user.isAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
+      userGroup: user.userGroup,
+      academicYear: user.academicYear,
+      faculty: user.faculty,
+      university: user.university
     };
 
     const newComment: Comment = {

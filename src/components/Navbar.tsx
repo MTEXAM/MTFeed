@@ -1,11 +1,13 @@
 import React from 'react';
-import { BookA, MessageSquare, Bell, Search, Settings, User, Shield } from 'lucide-react';
+import { BookA, MessageSquare, Bell, Search, Settings, User, Shield, Award, Edit3 } from 'lucide-react';
 import { SessionUser } from '../types';
+import { getBadgeStyle, formatUserBadge } from '../utils/auth';
 
 export function Navbar({ 
   user, 
   onLoginClick, 
   onAdminClick,
+  onEditProfile,
   searchQuery,
   onSearchChange,
   unreadCount = 0,
@@ -15,6 +17,7 @@ export function Navbar({
   user: SessionUser | null;
   onLoginClick: () => void;
   onAdminClick?: () => void;
+  onEditProfile?: () => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
   unreadCount?: number;
@@ -28,6 +31,10 @@ export function Navbar({
       onExternalLinkClick(url);
     }
   };
+
+  const badgeText = user ? (user.badge || formatUserBadge(user)) : '';
+  const badgeStyle = getBadgeStyle(badgeText);
+  const educationDetail = user ? [user.faculty, user.university].filter(Boolean).join(' • ') : '';
 
   return (
     <nav className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-xs">
@@ -105,28 +112,54 @@ export function Navbar({
                       src={user.avatar || (user.isAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.username)}&backgroundColor=cccccc`)} 
                       alt="Profile" 
                     />
-                    <span className="hidden md:inline font-semibold text-xs text-gray-700 max-w-[100px] truncate">
-                      {user.name || user.username}
-                    </span>
+                    <div className="hidden md:flex flex-col text-left">
+                      <span className="font-semibold text-xs text-gray-800 max-w-[100px] truncate leading-tight">
+                        {user.name || user.username}
+                      </span>
+                      {badgeText && (
+                        <span className="text-[10px] text-gray-500 truncate max-w-[110px]">
+                          {badgeText}
+                        </span>
+                      )}
+                    </div>
                   </button>
                   {/* Dropdown Profile without logout */}
-                  <div className="absolute right-0 w-64 mt-2 origin-top-right bg-white border border-gray-200 divide-y divide-gray-100 rounded-xl shadow-xl outline-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                  <div className="absolute right-0 w-72 mt-2 origin-top-right bg-white border border-gray-200 divide-y divide-gray-100 rounded-2xl shadow-xl outline-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
                     <div className="px-4 py-3">
-                      <p className="text-[11px] text-gray-500">บัญชีผู้ใช้ MTFeed</p>
-                      <p className="text-sm font-bold text-gray-900 truncate">{user.name || user.username}</p>
+                      <p className="text-[11px] text-gray-500 font-medium">บัญชีผู้ใช้ MTFeed</p>
+                      <p className="text-sm font-bold text-gray-900 truncate mt-0.5">{user.name || user.username}</p>
                       <div className="flex items-center space-x-2 mt-1">
                         <span className="text-xs text-gray-500 truncate">@{user.username}</span>
                         <span className="text-[10px] font-mono bg-red-50 text-red-700 border border-red-200 px-1.5 py-0.5 rounded font-semibold" title="รหัสความปลอดภัยประจำตัว">
                           UID: #{user.uid}
                         </span>
                       </div>
-                      {user.isAdmin && (
-                        <div className="mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800">
-                          👑 Admin ผู้ดูแลระบบ
+                      {badgeText && (
+                        <div className="mt-2">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${badgeStyle.bg} ${badgeStyle.text} ${badgeStyle.border}`}>
+                            {badgeText}
+                          </span>
                         </div>
+                      )}
+                      {educationDetail && (
+                        <p className="text-[11px] text-gray-500 mt-1.5 truncate" title={educationDetail}>
+                          🏛️ {educationDetail}
+                        </p>
                       )}
                     </div>
                     <div className="py-1">
+                      {onEditProfile && (
+                        <button 
+                          onClick={onEditProfile}
+                          className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                          <span className="flex items-center font-medium">
+                            <Edit3 className="w-4 h-4 mr-2 text-gray-500" />
+                            ปรับแต่งสถานะ / ป้ายยศ
+                          </span>
+                          <span className="text-[10px] text-red-600 font-semibold">แก้ไข →</span>
+                        </button>
+                      )}
                       <button 
                         onClick={onOpenNotifications}
                         className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
@@ -142,9 +175,9 @@ export function Navbar({
                         )}
                       </button>
                     </div>
-                    <div className="px-4 py-2 bg-gray-50 text-[11px] text-gray-500 flex items-center space-x-1.5">
+                    <div className="px-4 py-2 bg-gray-50 text-[11px] text-gray-500 flex items-center space-x-1.5 rounded-b-2xl">
                       <Shield className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
-                      <span>เข้าสู่ระบบต่อเนื่องอย่างปลอดภัย</span>
+                      <span>เชื่อมต่อบัญชีอัตโนมัติจาก MTExam</span>
                     </div>
                   </div>
                 </div>

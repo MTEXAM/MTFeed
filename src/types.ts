@@ -4,6 +4,10 @@ export interface User {
   username: string;
   avatar: string;
   badge?: string;
+  userGroup?: string;
+  academicYear?: string;
+  faculty?: string;
+  university?: string;
 }
 
 export interface SessionUser {
@@ -14,6 +18,11 @@ export interface SessionUser {
   avatar?: string;
   email?: string;
   isAdmin: boolean;
+  userGroup?: string;
+  academicYear?: string;
+  faculty?: string;
+  university?: string;
+  badge?: string;
   joinedAt?: string;
 }
 

@@ -90,6 +90,71 @@ export function deleteRegisteredUser(uidOrUsername: string): boolean {
   }
 }
 
+export const USER_GROUPS = [
+  '🔬🎓 นศ.เทคนิคการแพทย์',
+  '📝 เตรียมสอบสภาฯ',
+  '🔬 นักเทคนิคการแพทย์',
+  '🎓 นักศึกษา',
+  '🏫 นักเรียน',
+  '👤 ผู้ใช้งานทั่วไป'
+] as const;
+
+export const ACADEMIC_YEARS = [
+  'ปี 1',
+  'ปี 2',
+  'ปี 3',
+  'ปี 4',
+  'ปี 5+ / จบแล้ว'
+] as const;
+
+export function formatUserBadge(user: {
+  isAdmin?: boolean;
+  userGroup?: string;
+  academicYear?: string;
+  badge?: string;
+}): string {
+  if (user.isAdmin) return '👑 Admin';
+  if (user.badge) return user.badge;
+  
+  if (user.userGroup) {
+    const group = user.userGroup.trim();
+    // If student group with year
+    if (user.academicYear && (group.includes('นศ.') || group.includes('นักศึกษา') || group.includes('นักเรียน'))) {
+      const cleanYear = user.academicYear.replace(/\(.*?\)/g, '').trim();
+      return `${group} • ${cleanYear}`;
+    }
+    return group;
+  }
+  
+  return '🔬🎓 นศ.เทคนิคการแพทย์';
+}
+
+export function getBadgeStyle(badge?: string): { bg: string; text: string; border: string } {
+  if (!badge) {
+    return { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' };
+  }
+  if (badge.includes('Admin')) {
+    return { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300' };
+  }
+  if (badge.includes('เตรียมสอบสภา')) {
+    return { bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-200' };
+  }
+  if (badge.includes('นักเทคนิคการแพทย์') && !badge.includes('นศ.')) {
+    return { bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-200' };
+  }
+  if (badge.includes('นักศึกษา')) {
+    return { bg: 'bg-purple-50', text: 'text-purple-800', border: 'border-purple-200' };
+  }
+  if (badge.includes('นักเรียน')) {
+    return { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200' };
+  }
+  if (badge.includes('ผู้ใช้งานทั่วไป')) {
+    return { bg: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-300' };
+  }
+  // Default MedTech student
+  return { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200' };
+}
+
 export function getAllRegisteredUsersList(): SessionUser[] {
   const registry = getRegisteredUsers();
   return Object.values(registry);
@@ -101,6 +166,10 @@ export function resolveUserAccount(params: {
   displayName?: string | null;
   avatar?: string | null;
   role?: string | null;
+  userGroupParam?: string | null;
+  academicYearParam?: string | null;
+  facultyParam?: string | null;
+  universityParam?: string | null;
 }): SessionUser {
   const cleanUsername = params.username.trim().replace(/^@/, '');
   const isAdmin = params.role === 'admin' || params.role === 'true' || params.role === '1' || cleanUsername.toLowerCase() === 'bank';
@@ -110,6 +179,17 @@ export function resolveUserAccount(params: {
   if (params.uidParam && params.uidParam.trim().length >= 4) {
     uid = params.uidParam.trim().toUpperCase().slice(0, 8);
   }
+
+  const userGroup = params.userGroupParam ? decodeURIComponent(params.userGroupParam).trim() : undefined;
+  const academicYear = params.academicYearParam ? decodeURIComponent(params.academicYearParam).trim() : undefined;
+  const faculty = params.facultyParam ? decodeURIComponent(params.facultyParam).trim() : undefined;
+  const university = params.universityParam ? decodeURIComponent(params.universityParam).trim() : undefined;
+
+  const computedBadge = formatUserBadge({
+    isAdmin,
+    userGroup: userGroup || (cleanUsername.toLowerCase() === 'bank' ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
+    academicYear: academicYear || (cleanUsername.toLowerCase() === 'bank' ? undefined : 'ปี 3')
+  });
 
   const registry = getRegisteredUsers();
 
@@ -121,6 +201,11 @@ export function resolveUserAccount(params: {
       username: cleanUsername || existing.username,
       name: params.displayName ? decodeURIComponent(params.displayName).trim() : existing.name,
       avatar: params.avatar ? decodeURIComponent(params.avatar).trim() : existing.avatar,
+      userGroup: userGroup || existing.userGroup || '🔬🎓 นศ.เทคนิคการแพทย์',
+      academicYear: academicYear || existing.academicYear || 'ปี 3',
+      faculty: faculty || existing.faculty,
+      university: university || existing.university,
+      badge: computedBadge,
       isAdmin: isAdmin || existing.isAdmin
     };
     saveRegisteredUser(updatedUser);
@@ -135,6 +220,11 @@ export function resolveUserAccount(params: {
       uid: uid || existingByUsername.uid,
       name: params.displayName ? decodeURIComponent(params.displayName).trim() : existingByUsername.name,
       avatar: params.avatar ? decodeURIComponent(params.avatar).trim() : existingByUsername.avatar,
+      userGroup: userGroup || existingByUsername.userGroup || '🔬🎓 นศ.เทคนิคการแพทย์',
+      academicYear: academicYear || existingByUsername.academicYear || 'ปี 3',
+      faculty: faculty || existingByUsername.faculty,
+      university: university || existingByUsername.university,
+      badge: computedBadge,
       isAdmin: isAdmin || existingByUsername.isAdmin
     };
     saveRegisteredUser(updatedUser);
@@ -159,6 +249,11 @@ export function resolveUserAccount(params: {
     username: cleanUsername,
     name: cleanDisplayName,
     avatar: cleanAvatar,
+    userGroup: userGroup || (isAdmin ? 'ผู้ดูแลระบบ' : '🔬🎓 นศ.เทคนิคการแพทย์'),
+    academicYear: academicYear || (isAdmin ? undefined : 'ปี 3'),
+    faculty: faculty || 'คณะเทคนิคการแพทย์',
+    university: university || '',
+    badge: computedBadge,
     isAdmin,
     joinedAt: new Date().toLocaleDateString('th-TH')
   };

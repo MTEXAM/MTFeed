@@ -8,6 +8,7 @@ import { OnlineMembersModal } from './components/OnlineMembersModal';
 import { NotificationsModal } from './components/NotificationsModal';
 import { AdminBoardModal } from './components/AdminBoardModal';
 import { ExternalLinkModal } from './components/ExternalLinkModal';
+import { ProfileEditModal } from './components/ProfileEditModal';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post } from './types';
 import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser } from './utils/auth';
@@ -29,6 +30,10 @@ function getInitialUser(): SessionUser | null {
       const displayNameParam = params.get('displayName') || params.get('display_name') || params.get('fullname') || params.get('name');
       const avatarParam = params.get('avatar') || params.get('picture') || params.get('photo') || params.get('img') || params.get('avatar_url');
       const roleParam = params.get('role') || params.get('isAdmin') || params.get('is_admin') || params.get('admin');
+      const userGroupParam = params.get('userGroup') || params.get('role_group') || params.get('group') || params.get('status') || params.get('user_group');
+      const academicYearParam = params.get('academicYear') || params.get('academic_year') || params.get('year') || params.get('class_year');
+      const facultyParam = params.get('faculty') || params.get('fac') || params.get('department');
+      const universityParam = params.get('university') || params.get('uni') || params.get('u_name') || params.get('institution') || params.get('school');
 
       if (usernameParam) {
         const autoUser = resolveUserAccount({
@@ -36,7 +41,11 @@ function getInitialUser(): SessionUser | null {
           uidParam,
           displayName: displayNameParam,
           avatar: avatarParam,
-          role: roleParam
+          role: roleParam,
+          userGroupParam,
+          academicYearParam,
+          facultyParam,
+          universityParam
         });
 
         try {
@@ -67,6 +76,7 @@ export default function App() {
   const [isAdminBoardOpen, setIsAdminBoardOpen] = useState(false);
   const [isOnlineModalOpen, setIsOnlineModalOpen] = useState(false);
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
+  const [isProfileEditModalOpen, setIsProfileEditModalOpen] = useState(false);
   const [pendingExternalUrl, setPendingExternalUrl] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -167,6 +177,16 @@ export default function App() {
     }
   };
 
+  const handleProfileUpdate = (updatedUser: SessionUser) => {
+    setUser(updatedUser);
+    setRegisteredUsers(getAllRegisteredUsersList());
+    try {
+      localStorage.setItem('mtfeed_user', JSON.stringify(updatedUser));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleLogout = () => {
     setUser(null);
     try {
@@ -261,6 +281,7 @@ export default function App() {
         user={user} 
         onLoginClick={() => setIsAuthModalOpen(true)} 
         onAdminClick={() => setIsAdminBoardOpen(true)}
+        onEditProfile={() => setIsProfileEditModalOpen(true)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         unreadCount={unreadNotificationsCount}
@@ -277,6 +298,8 @@ export default function App() {
           }}
           unreadCount={unreadNotificationsCount}
           onOpenNotifications={() => setIsNotificationsModalOpen(true)}
+          currentUser={user}
+          onEditProfile={() => setIsProfileEditModalOpen(true)}
         />
         
         <Feed 
@@ -408,6 +431,13 @@ export default function App() {
         registeredUsers={registeredUsers}
         onDeleteUser={handleDeleteUser}
         currentUser={user}
+      />
+
+      <ProfileEditModal
+        isOpen={isProfileEditModalOpen}
+        onClose={() => setIsProfileEditModalOpen(false)}
+        user={user}
+        onUpdateUser={handleProfileUpdate}
       />
     </div>
   );

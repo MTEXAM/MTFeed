@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Circle, ShieldCheck, Sparkles, MessageSquare, Trash2, UserX, AlertTriangle, Check } from 'lucide-react';
 import { SessionUser } from '../types';
+import { getBadgeStyle, formatUserBadge } from '../utils/auth';
 
 export function OnlineMembersModal({
   isOpen,
@@ -132,6 +133,10 @@ export function OnlineMembersModal({
           ) : (
             displayList.map((member) => {
               const isSelf = currentUser && (member.username.toLowerCase() === currentUser.username.toLowerCase() || member.uid === currentUser.uid);
+              const badgeText = member.badge || formatUserBadge(member);
+              const style = getBadgeStyle(badgeText);
+              const educationInfo = [member.faculty, member.university].filter(Boolean).join(' • ');
+
               return (
                 <div key={member.uid || member.username} className="py-3 first:pt-0 last:pb-0 flex items-center justify-between group hover:bg-gray-50/80 px-2 rounded-xl transition-colors">
                   <div className="flex items-center space-x-3 min-w-0">
@@ -144,7 +149,7 @@ export function OnlineMembersModal({
                       <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full"></span>
                     </div>
                     <div className="min-w-0">
-                      <div className="flex items-center space-x-1.5">
+                      <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
                         <p className="text-sm font-bold text-gray-900 truncate">
                           {member.name || member.username}
                         </p>
@@ -153,17 +158,22 @@ export function OnlineMembersModal({
                             คุณ
                           </span>
                         )}
-                        {member.isAdmin && (
-                          <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded-md">
-                            👑 Admin
+                        {badgeText && (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${style.bg} ${style.text} ${style.border}`}>
+                            {badgeText}
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center space-x-2 mt-0.5">
-                        <span className="text-xs text-gray-500 truncate">@{member.username}</span>
+                      <div className="flex items-center space-x-2 mt-0.5 flex-wrap gap-y-0.5 text-xs text-gray-500">
+                        <span className="truncate">@{member.username}</span>
                         <span className="text-[10px] font-mono bg-gray-100 text-gray-600 px-1.5 py-0.2 rounded border border-gray-200">
                           UID: #{member.uid}
                         </span>
+                        {educationInfo && (
+                          <span className="text-gray-400 text-[11px] truncate max-w-[200px]" title={educationInfo}>
+                            • {educationInfo}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
