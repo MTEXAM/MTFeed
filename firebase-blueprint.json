@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "users": {
+      "title": "Registered Users",
+      "description": "User accounts registered in the MTFeed system",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "username": { "type": "string" },
+        "name": { "type": "string" },
+        "avatar": { "type": "string" },
+        "email": { "type": "string" },
+        "isAdmin": { "type": "boolean" },
+        "userGroup": { "type": "string" },
+        "academicYear": { "type": "string" },
+        "faculty": { "type": "string" },
+        "university": { "type": "string" },
+        "badge": { "type": "string" },
+        "joinedAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "username"]
+    },
+    "posts": {
+      "title": "Community Posts",
+      "description": "Feed posts created by users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "author": { "type": "object" },
+        "content": { "type": "string" },
+        "image": { "type": "string" },
+        "poll": { "type": "object" },
+        "tags": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "createdAtMs": { "type": "number" },
+        "stats": { "type": "object" },
+        "isAnonymous": { "type": "boolean" },
+        "comments": { "type": "array" },
+        "isReported": { "type": "boolean" }
+      },
+      "required": ["id", "content", "createdAt"]
+    }
+  }
+}

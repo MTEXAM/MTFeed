@@ -12,6 +12,7 @@ import { AdminPasswordModal } from './components/AdminPasswordModal';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post } from './types';
 import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, mtFeedChannel } from './utils/auth';
+import { subscribeToPosts, subscribeToUsers, syncPostsToFirestore, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore } from './utils/firestoreService';
 import { INITIAL_POSTS } from './data';
 
 // Helper function to extract user from URL search params, hash, or session
@@ -97,8 +98,33 @@ export default function App() {
     return list;
   });
 
-  // Real-time synchronization for registered users, posts, and notifications across tabs/windows
+  // Real-time synchronization for registered users, posts, and notifications from Firestore & local broadcast
   useEffect(() => {
+    // 1. Subscribe to Cloud Firestore Users
+    const unsubscribeUsers = subscribeToUsers((firestoreUsers) => {
+      if (firestoreUsers && firestoreUsers.length >= 0) {
+        setRegisteredUsers(firestoreUsers);
+        // Sync to local registry cache
+        try {
+          const regMap: Record<string, SessionUser> = {};
+          firestoreUsers.forEach(u => {
+            if (u.uid) regMap[u.uid] = u;
+          });
+          localStorage.setItem('mtfeed_accounts_registry', JSON.stringify(regMap));
+        } catch (e) {}
+      }
+    });
+
+    // 2. Subscribe to Cloud Firestore Posts
+    const unsubscribePosts = subscribeToPosts((firestorePosts) => {
+      if (firestorePosts && firestorePosts.length > 0) {
+        setPosts(firestorePosts);
+        try {
+          localStorage.setItem('mtfeed_posts', JSON.stringify(firestorePosts));
+        } catch (e) {}
+      }
+    });
+
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'mtfeed_accounts_registry') {
         setRegisteredUsers(getAllRegisteredUsersList());
@@ -151,6 +177,8 @@ export default function App() {
     }
 
     return () => {
+      unsubscribeUsers();
+      unsubscribePosts();
       window.removeEventListener('storage', handleStorageChange);
       if (mtFeedChannel && channelListener) {
         mtFeedChannel.removeEventListener('message', channelListener);
@@ -171,13 +199,15 @@ export default function App() {
     return INITIAL_POSTS;
   });
 
-  // Save posts to localStorage and broadcast
+  // Save posts to localStorage and Firestore
   useEffect(() => {
     try {
       localStorage.setItem('mtfeed_posts', JSON.stringify(posts));
       if (mtFeedChannel) {
         mtFeedChannel.postMessage({ type: 'POSTS_UPDATED' });
       }
+      // Sync to Cloud Firestore
+      syncPostsToFirestore(posts);
     } catch (e) {
       console.error(e);
     }
@@ -267,9 +297,16 @@ export default function App() {
     }
   };
 
+  // Admin & User Delete Post Function
+  const handleDeletePost = async (postId: string) => {
+    setPosts(prev => prev.filter(p => p.id !== postId));
+    await deletePostFromFirestore(postId);
+  };
+
   // Admin Delete User Function
-  const handleDeleteUser = (uidOrUsername: string) => {
+  const handleDeleteUser = async (uidOrUsername: string) => {
     deleteRegisteredUser(uidOrUsername);
+    await deleteUserFromFirestore(uidOrUsername);
     const updatedUsers = getAllRegisteredUsersList();
     setRegisteredUsers(updatedUsers);
 
@@ -280,8 +317,9 @@ export default function App() {
   };
 
   // Admin Clear All Users Function
-  const handleClearAllUsers = () => {
+  const handleClearAllUsers = async () => {
     clearAllRegisteredUsers(user || undefined);
+    await clearAllUsersFromFirestore(user || undefined);
     const updatedUsers = getAllRegisteredUsersList();
     setRegisteredUsers(updatedUsers);
   };
@@ -535,7 +573,7 @@ export default function App() {
         isOpen={isAdminBoardOpen} 
         onClose={() => setIsAdminBoardOpen(false)} 
         posts={posts} 
-        onDeletePost={(postId) => setPosts(prev => prev.filter(p => p.id !== postId))}
+        onDeletePost={handleDeletePost}
         registeredUsers={registeredUsers}
         onDeleteUser={handleDeleteUser}
         currentUser={user}

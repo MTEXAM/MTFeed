@@ -3,6 +3,7 @@ import { PostComposer } from './PostComposer';
 import { PostItem } from './PostItem';
 import { MOCK_USERS } from '../data';
 import { Post, Comment, SessionUser } from '../types';
+import { deletePostFromFirestore } from '../utils/firestoreService';
 
 export function Feed({ 
   posts = [],
@@ -103,6 +104,7 @@ export function Feed({
     if (setPosts) {
       setPosts(prev => prev.filter(p => p.id !== postId));
     }
+    deletePostFromFirestore(postId);
   };
 
   const handleReportPost = (postId: string) => {

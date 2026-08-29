@@ -1,4 +1,5 @@
 import { SessionUser, AppNotification } from '../types';
+import { saveUserToFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore } from './firestoreService';
 
 // Deterministic 8-char hash generator from string
 export function generateHash8(str: string): string {
@@ -105,6 +106,8 @@ export function saveRegisteredUser(user: SessionUser): void {
     if (mtFeedChannel) {
       mtFeedChannel.postMessage({ type: 'USER_REGISTERED', user });
     }
+    // Async save to Cloud Firestore
+    saveUserToFirestore(user);
   } catch (e) {
     console.error('Failed to save account to registry', e);
   }
@@ -140,6 +143,9 @@ export function deleteRegisteredUser(uidOrUsername: string): boolean {
         break;
       }
     }
+
+    // Also delete from Firestore
+    deleteUserFromFirestore(uidOrUsername);
 
     if (deletedKey) {
       localStorage.setItem(REGISTRY_KEY, JSON.stringify(registry));
@@ -179,6 +185,8 @@ export function clearAllRegisteredUsers(keepUser?: SessionUser): void {
     if (mtFeedChannel) {
       mtFeedChannel.postMessage({ type: 'USER_REGISTERED' });
     }
+    // Also clear from Firestore
+    clearAllUsersFromFirestore(keepUser);
   } catch (e) {
     console.error('Failed to clear users registry', e);
   }
