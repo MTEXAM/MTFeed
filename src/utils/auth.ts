@@ -172,12 +172,41 @@ export function resolveUserAccount(params: {
   universityParam?: string | null;
 }): SessionUser {
   const cleanUsername = params.username.trim().replace(/^@/, '');
-  const isAdmin = params.role === 'admin' || params.role === 'true' || params.role === '1' || cleanUsername.toLowerCase() === 'bank';
   
   // 1. If explicit 8-char UID passed from exam web
   let uid = '';
   if (params.uidParam && params.uidParam.trim().length >= 4) {
     uid = params.uidParam.trim().toUpperCase().slice(0, 8);
+  }
+
+  const registry = getRegisteredUsers();
+
+  // --- Strict Duplicate Username Check ---
+  // Check if username is already registered under a DIFFERENT UID
+  const existingByUsername = findUserByUsername(cleanUsername);
+  if (existingByUsername && (!uid || existingByUsername.uid !== uid)) {
+    alert(`❌ ปฏิเสธการเข้าสู่ระบบ! ชื่อผู้ใช้ "@${cleanUsername}" มีผู้ใช้งานอื่นครอบครองอยู่แล้วในระบบ MTFeed`);
+    throw new Error(`Duplicate username: @${cleanUsername}`);
+  }
+
+  // --- Admin Password Verification (Bank2546) ---
+  let isAdmin = params.role === 'admin' || params.role === 'true' || params.role === '1' || cleanUsername.toLowerCase() === 'bank';
+  
+  if (isAdmin) {
+    // Check if admin password already verified in sessionStorage for this session
+    const adminSessionKey = `mt_admin_verified_${cleanUsername}`;
+    const isAlreadyVerified = sessionStorage.getItem(adminSessionKey) === 'true';
+
+    if (!isAlreadyVerified) {
+      const passwordInput = window.prompt(`🔒 [MTFeed Security] กรุณายืนยันรหัสผ่าน Admin สำหรับผู้ใช้ "${cleanUsername}":`, "");
+      if (passwordInput === 'Bank2546') {
+        sessionStorage.setItem(adminSessionKey, 'true');
+        alert('✅ ยืนยันรหัสผ่าน Admin สำเร็จ!');
+      } else {
+        alert('❌ รหัสผ่าน Admin ไม่ถูกต้อง! ระบบปฏิเสธสิทธิ์ผู้ดูแลระบบ และเข้าสู่ระบบในฐานะผู้ใช้ทั่วไปแทน');
+        isAdmin = false;
+      }
+    }
   }
 
   const userGroup = params.userGroupParam ? decodeURIComponent(params.userGroupParam).trim() : undefined;
@@ -187,11 +216,9 @@ export function resolveUserAccount(params: {
 
   const computedBadge = formatUserBadge({
     isAdmin,
-    userGroup: userGroup || (cleanUsername.toLowerCase() === 'bank' ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
-    academicYear: academicYear || (cleanUsername.toLowerCase() === 'bank' ? undefined : 'ปี 3')
+    userGroup: userGroup || (isAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
+    academicYear: academicYear || (isAdmin ? undefined : 'ปี 3')
   });
-
-  const registry = getRegisteredUsers();
 
   // If UID provided and exists in registry, load and merge
   if (uid && registry[uid]) {
@@ -212,8 +239,7 @@ export function resolveUserAccount(params: {
     return updatedUser;
   }
 
-  // If no UID or not in registry, check if username exists in registry
-  const existingByUsername = findUserByUsername(cleanUsername);
+  // If existing by username and matches UID
   if (existingByUsername) {
     const updatedUser: SessionUser = {
       ...existingByUsername,
@@ -232,10 +258,10 @@ export function resolveUserAccount(params: {
   }
 
   // Otherwise create new permanent user with 8-char UID
-  const finalUid = uid || (cleanUsername.toLowerCase() === 'bank' ? 'BANK2026' : generateHash8(cleanUsername + '_mt'));
+  const finalUid = uid || (isAdmin ? 'BANK2026' : generateHash8(cleanUsername + '_mt'));
   const cleanDisplayName = params.displayName 
     ? decodeURIComponent(params.displayName).trim() 
-    : (cleanUsername.toLowerCase() === 'bank' ? 'Admin Bank' : cleanUsername);
+    : (isAdmin ? 'Admin Bank' : cleanUsername);
     
   const cleanAvatar = params.avatar 
     ? decodeURIComponent(params.avatar).trim() 
