@@ -18,7 +18,8 @@ export function Feed({
   onClearSearch,
   registeredUsers = [],
   onMention,
-  onExternalLinkClick
+  onExternalLinkClick,
+  onReportPost
 }: { 
   posts?: Post[];
   setPosts?: React.Dispatch<React.SetStateAction<Post[]>>;
@@ -42,6 +43,7 @@ export function Feed({
     targetPostId?: string;
   }) => void;
   onExternalLinkClick?: (url: string) => void;
+  onReportPost?: (postId: string) => void;
 }) {
 
   const handlePost = (content: string, isAnonymous: boolean, image?: string, poll?: { options: { id: string, text: string, votes: number }[], expiresAt: string, totalVotes: number }) => {
@@ -112,6 +114,7 @@ export function Feed({
         return p;
       }));
     }
+    onReportPost?.(postId);
     alert('ขอบคุณที่รายงาน โพสต์นี้ถูกส่งให้ผู้ดูแลระบบตรวจสอบแล้ว');
   };
 

@@ -32,13 +32,70 @@ export function generateRandomUid8(): string {
 // Accounts registry key in localStorage
 const REGISTRY_KEY = 'mtfeed_accounts_registry';
 
+const DEFAULT_ACTIVE_USERS: Record<string, SessionUser> = {
+  'BANK2026': {
+    uid: 'BANK2026',
+    username: 'admin_master',
+    name: 'Admin Bank',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin_master',
+    isAdmin: true,
+    userGroup: '👑 Admin',
+    academicYear: 'ปี 5+',
+    faculty: 'คณะเทคนิคการแพทย์',
+    badge: '👑 Admin'
+  },
+  'MED68001': {
+    uid: 'MED68001',
+    username: 'somchai_mt',
+    name: 'สมชาย เทค',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=somchai_mt',
+    isAdmin: false,
+    userGroup: '🔬🎓 นศ.เทคนิคการแพทย์',
+    academicYear: 'ปี 3',
+    faculty: 'คณะเทคนิคการแพทย์',
+    badge: '🔬🎓 นศ.เทคนิคการแพทย์ • ปี 3'
+  },
+  'MED67012': {
+    uid: 'MED67012',
+    username: 'jiraporn_med',
+    name: 'จิรภรณ์ ตรวจเลือด',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=jiraporn_med',
+    isAdmin: false,
+    userGroup: '🔬 นักเทคนิคการแพทย์',
+    academicYear: 'ปี 4',
+    faculty: 'คณะเทคนิคการแพทย์',
+    badge: '🔬 นักเทคนิคการแพทย์'
+  },
+  'MED67890': {
+    uid: 'MED67890',
+    username: 'kanokwan_exam',
+    name: 'กนกวรรณ เตรียมสอบ',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=kanokwan_exam',
+    isAdmin: false,
+    userGroup: '📝 เตรียมสอบสภาฯ',
+    academicYear: 'ปี 4',
+    faculty: 'คณะเทคนิคการแพทย์',
+    badge: '📝 เตรียมสอบสภาฯ'
+  }
+};
+
+// Broadcast channel for real-time multi-tab sync
+export const mtFeedChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('mtfeed_realtime_sync') : null;
+
 export function getRegisteredUsers(): Record<string, SessionUser> {
   try {
     const raw = localStorage.getItem(REGISTRY_KEY);
-    return raw ? JSON.parse(raw) : {};
+    if (!raw) {
+      localStorage.setItem(REGISTRY_KEY, JSON.stringify(DEFAULT_ACTIVE_USERS));
+      return DEFAULT_ACTIVE_USERS;
+    }
+    const parsed = JSON.parse(raw);
+    // Ensure default active users are present if registry is sparse
+    const merged = { ...DEFAULT_ACTIVE_USERS, ...parsed };
+    return merged;
   } catch (e) {
     console.error('Failed to load accounts registry', e);
-    return {};
+    return DEFAULT_ACTIVE_USERS;
   }
 }
 
@@ -47,6 +104,9 @@ export function saveRegisteredUser(user: SessionUser): void {
     const registry = getRegisteredUsers();
     registry[user.uid] = user;
     localStorage.setItem(REGISTRY_KEY, JSON.stringify(registry));
+    if (mtFeedChannel) {
+      mtFeedChannel.postMessage({ type: 'USER_REGISTERED', user });
+    }
   } catch (e) {
     console.error('Failed to save account to registry', e);
   }

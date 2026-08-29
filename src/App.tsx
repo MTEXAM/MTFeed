@@ -11,10 +11,10 @@ import { ExternalLinkModal } from './components/ExternalLinkModal';
 import { AdminPasswordModal } from './components/AdminPasswordModal';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post } from './types';
-import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser } from './utils/auth';
+import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, mtFeedChannel } from './utils/auth';
 import { INITIAL_POSTS } from './data';
 
-// Helper function to extract user from URL search params, hash, or localStorage synchronously
+// Helper function to extract user from URL search params, hash, or session
 function getInitialUser(): SessionUser | null {
   try {
     let params: URLSearchParams | null = null;
@@ -50,18 +50,22 @@ function getInitialUser(): SessionUser | null {
 
         try {
           localStorage.setItem('mtfeed_user', JSON.stringify(autoUser));
+          sessionStorage.setItem('mtfeed_entered_via_link', 'true');
         } catch (e) {
-          console.error('Error saving user to localStorage:', e);
+          console.error('Error saving user to storage:', e);
         }
 
         return autoUser;
       }
     }
 
-    // Check localStorage if not in URL
-    const savedUser = localStorage.getItem('mtfeed_user');
-    if (savedUser) {
-      return JSON.parse(savedUser);
+    // If not in URL, check if session marked as entered via link
+    const enteredViaLink = sessionStorage.getItem('mtfeed_entered_via_link');
+    if (enteredViaLink === 'true') {
+      const savedUser = localStorage.getItem('mtfeed_user');
+      if (savedUser) {
+        return JSON.parse(savedUser);
+      }
     }
   } catch (e) {
     console.error('Error parsing initial user:', e);
@@ -93,6 +97,67 @@ export default function App() {
     return list;
   });
 
+  // Real-time synchronization for registered users, posts, and notifications across tabs/windows
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'mtfeed_accounts_registry') {
+        setRegisteredUsers(getAllRegisteredUsersList());
+      }
+      if (e.key === 'mtfeed_posts') {
+        const saved = localStorage.getItem('mtfeed_posts');
+        if (saved) {
+          try {
+            setPosts(JSON.parse(saved));
+          } catch (err) {}
+        }
+      }
+      if (e.key === 'mtfeed_notifications') {
+        const saved = localStorage.getItem('mtfeed_notifications');
+        if (saved) {
+          try {
+            setNotifications(JSON.parse(saved));
+          } catch (err) {}
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
+    let channelListener: ((event: MessageEvent) => void) | null = null;
+    if (mtFeedChannel) {
+      channelListener = (event: MessageEvent) => {
+        if (event.data) {
+          if (event.data.type === 'USER_REGISTERED') {
+            setRegisteredUsers(getAllRegisteredUsersList());
+          }
+          if (event.data.type === 'POSTS_UPDATED') {
+            const saved = localStorage.getItem('mtfeed_posts');
+            if (saved) {
+              try {
+                setPosts(JSON.parse(saved));
+              } catch (err) {}
+            }
+          }
+          if (event.data.type === 'NOTIFICATIONS_UPDATED') {
+            const saved = localStorage.getItem('mtfeed_notifications');
+            if (saved) {
+              try {
+                setNotifications(JSON.parse(saved));
+              } catch (err) {}
+            }
+          }
+        }
+      };
+      mtFeedChannel.addEventListener('message', channelListener);
+    }
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      if (mtFeedChannel && channelListener) {
+        mtFeedChannel.removeEventListener('message', channelListener);
+      }
+    };
+  }, []);
+
   // Global Posts State
   const [posts, setPosts] = useState<Post[]>(() => {
     const saved = localStorage.getItem('mtfeed_posts');
@@ -106,10 +171,13 @@ export default function App() {
     return INITIAL_POSTS;
   });
 
-  // Save posts to localStorage
+  // Save posts to localStorage and broadcast
   useEffect(() => {
     try {
       localStorage.setItem('mtfeed_posts', JSON.stringify(posts));
+      if (mtFeedChannel) {
+        mtFeedChannel.postMessage({ type: 'POSTS_UPDATED' });
+      }
     } catch (e) {
       console.error(e);
     }
@@ -128,10 +196,13 @@ export default function App() {
     return getInitialNotifications(getInitialUser());
   });
 
-  // Save notifications to localStorage
+  // Save notifications to localStorage and broadcast
   useEffect(() => {
     try {
       localStorage.setItem('mtfeed_notifications', JSON.stringify(notifications));
+      if (mtFeedChannel) {
+        mtFeedChannel.postMessage({ type: 'NOTIFICATIONS_UPDATED' });
+      }
     } catch (e) {
       console.error(e);
     }
@@ -243,11 +314,30 @@ export default function App() {
     setNotifications([]);
   };
 
+  const handleReportPost = (postId: string) => {
+    const targetPost = posts.find(p => p.id === postId);
+    if (targetPost) {
+      const reportNotif: AppNotification = {
+        id: `report_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        type: 'system',
+        title: `🚨 มีรายงานโพสต์ไม่เหมาะสม (${targetPost.author.name})`,
+        description: `โพสต์: "${targetPost.content.slice(0, 60)}..." ถูกรายงานโดยผู้ใช้งาน กรุณาตรวจสอบในแดชบอร์ดแอดมิน`,
+        targetPostId: postId,
+        recipientUsername: 'admin',
+        createdAt: 'เมื่อสักครู่',
+        read: false
+      };
+      setNotifications(prev => [reportNotif, ...prev]);
+    }
+  };
+
   // Notifications relevant for current user:
   // - System notifications (no recipientUsername)
+  // - OR notifications specifically targeting admin (if user is admin)
   // - OR notifications specifically targeting this user's username / UID
   const relevantNotifications = notifications.filter(n => {
     if (!n.recipientUsername) return true; // public system notifications
+    if (n.recipientUsername === 'admin' && user?.isAdmin) return true; // admin report notifications
     if (!user) return false;
     return n.recipientUsername === user.username.toLowerCase() || n.recipientUsername === user.uid.toLowerCase();
   });
@@ -316,6 +406,7 @@ export default function App() {
           registeredUsers={registeredUsers}
           onMention={handleMentionNotification}
           onExternalLinkClick={handleOpenExternalUrl}
+          onReportPost={handleReportPost}
         />
         
         <SidebarRight 

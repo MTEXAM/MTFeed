@@ -106,6 +106,22 @@ export function PostComposer({
     setShowLinkInput(false);
   };
 
+  if (!user) {
+    return (
+      <div className="px-4 py-6 sm:px-6 border-b border-gray-200 bg-amber-50/40">
+        <div className="text-center py-3">
+          <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-amber-100 text-amber-700 mb-2 font-bold text-sm">
+            🔒
+          </div>
+          <h3 className="text-sm font-bold text-gray-800">โหมดอ่านอย่างเดียว (Read-Only Mode)</h3>
+          <p className="text-xs text-gray-600 mt-1 max-w-md mx-auto leading-relaxed">
+            คุณเข้าใช้งานแบบทั่วไป (ไม่ได้เข้าผ่านลิงก์เชื่อมโยงระบบ) สามารถอ่านโพสต์ ค้นหา และดูเนื้อหาได้ตามปกติ แต่หากต้องการสร้างโพสต์ กรุณาเข้าสู่ระบบผ่านลิงก์เชื่อมโยงจาก MTExam เท่านั้น
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="px-4 py-4 sm:px-6 border-b border-gray-200">
       <div className="flex space-x-3">
