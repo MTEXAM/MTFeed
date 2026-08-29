@@ -20,7 +20,7 @@ export function PostItem({
   onComment?: (postId: string, content: string) => void;
   onDelete?: (postId: string) => void;
   onReport?: (postId: string) => void;
-  user: { username: string; isAdmin: boolean } | null;
+  user: { username: string; isAdmin: boolean; needsAdminVerification?: boolean } | null;
   onSelectTag?: (tag: string) => void;
   onExternalLinkClick?: (url: string) => void;
 }) {
@@ -45,9 +45,9 @@ export function PostItem({
   const votedOptionId = post.userInteractions?.votedOptionId;
 
   const isOwner = user?.username === post.author.username;
-  const isAdmin = user?.isAdmin;
-  const canDelete = isAdmin || isOwner;
-  const canReport = user && !isOwner && !isAdmin;
+  const isVerifiedAdmin = Boolean(user?.isAdmin && !user?.needsAdminVerification);
+  const canDelete = isVerifiedAdmin || isOwner;
+  const canReport = Boolean(user && !isOwner && !isVerifiedAdmin);
 
   const handleShare = async () => {
     const shareData = {

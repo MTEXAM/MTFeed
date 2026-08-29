@@ -112,8 +112,9 @@ export function formatUserBadge(user: {
   userGroup?: string;
   academicYear?: string;
   badge?: string;
+  username?: string;
 }): string {
-  if (user.isAdmin) return '👑 Admin';
+  if (user.isAdmin || user.badge === '👑 Admin' || user.userGroup?.includes('Admin') || user.userGroup?.includes('ผู้ดูแลระบบ') || user.username?.toLowerCase() === 'bank') return '👑 Admin';
   if (user.badge) return user.badge;
   
   if (user.userGroup) {
@@ -200,9 +201,10 @@ export function resolveUserAccount(params: {
   const university = params.universityParam ? decodeURIComponent(params.universityParam).trim() : undefined;
 
   const computedBadge = formatUserBadge({
-    isAdmin,
-    userGroup: userGroup || (isAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
-    academicYear: academicYear || (isAdmin ? undefined : 'ปี 3')
+    isAdmin: isRequestedAdmin || isAdmin,
+    userGroup: userGroup || (isRequestedAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
+    academicYear: academicYear || (isRequestedAdmin ? undefined : 'ปี 3'),
+    username: cleanUsername
   });
 
   // If UID provided and exists in registry, load and merge
