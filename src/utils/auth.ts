@@ -127,21 +127,29 @@ export function deleteRegisteredUser(uidOrUsername: string): boolean {
   try {
     const registry = getRegisteredUsers();
     const clean = uidOrUsername.trim().toLowerCase().replace(/^@/, '');
+    let deleted = false;
     
     // Check if key is UID
     if (registry[uidOrUsername.toUpperCase()]) {
       delete registry[uidOrUsername.toUpperCase()];
-      localStorage.setItem(REGISTRY_KEY, JSON.stringify(registry));
-      return true;
-    }
-    
-    // Or find by username
-    for (const uid in registry) {
-      if (registry[uid].username.toLowerCase() === clean || registry[uid].uid.toLowerCase() === clean) {
-        delete registry[uid];
-        localStorage.setItem(REGISTRY_KEY, JSON.stringify(registry));
-        return true;
+      deleted = true;
+    } else {
+      // Or find by username
+      for (const uid in registry) {
+        if (registry[uid].username.toLowerCase() === clean || registry[uid].uid.toLowerCase() === clean) {
+          delete registry[uid];
+          deleted = true;
+          break;
+        }
       }
+    }
+
+    if (deleted) {
+      localStorage.setItem(REGISTRY_KEY, JSON.stringify(registry));
+      if (mtFeedChannel) {
+        mtFeedChannel.postMessage({ type: 'USER_REGISTERED' });
+      }
+      return true;
     }
     return false;
   } catch (e) {
