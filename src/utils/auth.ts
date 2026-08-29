@@ -33,7 +33,7 @@ export function generateRandomUid8(): string {
 // Accounts registry key in localStorage
 const REGISTRY_KEY = 'mtfeed_accounts_registry';
 
-const DEFAULT_ACTIVE_USERS: Record<string, SessionUser> = {
+export const DEFAULT_ACTIVE_USERS: Record<string, SessionUser> = {
   'BANK2026': {
     uid: 'BANK2026',
     username: 'admin_master',
@@ -101,7 +101,10 @@ export function getRegisteredUsers(): Record<string, SessionUser> {
 export function saveRegisteredUser(user: SessionUser): void {
   try {
     const registry = getRegisteredUsers();
-    registry[user.uid] = user;
+    const key = user.uid || user.username || user.id;
+    if (key) {
+      registry[key] = user;
+    }
     localStorage.setItem(REGISTRY_KEY, JSON.stringify(registry));
     if (mtFeedChannel) {
       mtFeedChannel.postMessage({ type: 'USER_REGISTERED', user });

@@ -9,6 +9,7 @@ export function AdminBoardModal({
   onDeletePost,
   registeredUsers = [],
   onDeleteUser,
+  onClearAllUsers,
   currentUser
 }: { 
   isOpen: boolean; 
@@ -17,10 +18,12 @@ export function AdminBoardModal({
   onDeletePost: (postId: string) => void;
   registeredUsers?: SessionUser[];
   onDeleteUser?: (uidOrUsername: string) => void;
+  onClearAllUsers?: () => void;
   currentUser?: SessionUser | null;
 }) {
   const [activeTab, setActiveTab] = useState<'reports' | 'users'>('reports');
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<SessionUser | null>(null);
+  const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -31,8 +34,17 @@ export function AdminBoardModal({
     if (onDeleteUser) {
       onDeleteUser(user.uid || user.username);
       setConfirmDeleteUser(null);
-      setActionSuccessMsg(`ลบผู้ใช้ @${user.username} ออกจากระบบเรียบร้อยแล้ว`);
+      setActionSuccessMsg(`ลบบัญชี @${user.username} ออกจากระบบเรียบร้อยแล้ว`);
       setTimeout(() => setActionSuccessMsg(null), 3000);
+    }
+  };
+
+  const handleClearAll = () => {
+    if (onClearAllUsers) {
+      onClearAllUsers();
+      setShowClearAllConfirm(false);
+      setActionSuccessMsg('ล้างรายชื่อสมาชิกในระบบเรียบร้อยแล้ว (ยกเว้นแอดมินปัจจุบัน)');
+      setTimeout(() => setActionSuccessMsg(null), 4000);
     }
   };
 
@@ -123,6 +135,39 @@ export function AdminBoardModal({
           </div>
         )}
         
+        {/* Confirm Clear All Overlay */}
+        {showClearAllConfirm && (
+          <div className="p-4 bg-red-100 border-b border-red-300 animate-in fade-in">
+            <div className="flex items-start space-x-3">
+              <div className="p-2 bg-red-200 text-red-700 rounded-xl flex-shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-red-950">
+                  ⚠️ ยืนยันการล้างบัญชีสมาชิกทั้งหมดในระบบ?
+                </p>
+                <p className="text-xs text-red-800 mt-1">
+                  การดำเนินการนี้จะลบบัญชีผู้ใช้ที่ลงทะเบียนทั้งหมดออกจากฐานข้อมูล Cloud Firestore และเครื่องนี้ ยกเว้นบัญชีแอดมินของคุณ
+                </p>
+                <div className="mt-3 flex space-x-2">
+                  <button
+                    onClick={handleClearAll}
+                    className="px-3.5 py-1.5 bg-red-700 hover:bg-red-800 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
+                  >
+                    ล้างบัญชีทั้งหมดทันที
+                  </button>
+                  <button
+                    onClick={() => setShowClearAllConfirm(false)}
+                    className="px-3 py-1.5 bg-white hover:bg-gray-100 text-gray-700 rounded-lg text-xs font-medium transition-colors border border-gray-300"
+                  >
+                    ยกเลิก
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Content Area */}
         <div className="flex-1 overflow-y-auto p-4 bg-gray-50/50">
           {activeTab === 'reports' ? (
@@ -168,8 +213,21 @@ export function AdminBoardModal({
             /* Manage Users Tab */
             <div className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-700 uppercase">รายชื่อสมาชิกที่ลงทะเบียน</span>
-                <span className="text-xs text-gray-500">{registeredUsers.length} บัญชี</span>
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-bold text-gray-700 uppercase">รายชื่อสมาชิกที่ลงทะเบียน</span>
+                  <span className="text-xs bg-gray-200 text-gray-700 font-bold px-2 py-0.5 rounded-full">
+                    {registeredUsers.length} บัญชี
+                  </span>
+                </div>
+                {onClearAllUsers && registeredUsers.length > 0 && (
+                  <button
+                    onClick={() => setShowClearAllConfirm(true)}
+                    className="inline-flex items-center px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors shadow-2xs"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 mr-1" />
+                    ล้างบัญชีทั้งหมด
+                  </button>
+                )}
               </div>
               
               {registeredUsers.length === 0 ? (

@@ -11,8 +11,8 @@ import { ExternalLinkModal } from './components/ExternalLinkModal';
 import { AdminPasswordModal } from './components/AdminPasswordModal';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post } from './types';
-import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, mtFeedChannel } from './utils/auth';
-import { subscribeToPosts, subscribeToUsers, syncPostsToFirestore, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore } from './utils/firestoreService';
+import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel } from './utils/auth';
+import { subscribeToPosts, subscribeToUsers, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore } from './utils/firestoreService';
 import { INITIAL_POSTS } from './data';
 
 // Helper function to extract user from URL search params, hash, or session
@@ -102,14 +102,31 @@ export default function App() {
   useEffect(() => {
     // 1. Subscribe to Cloud Firestore Users
     const unsubscribeUsers = subscribeToUsers((firestoreUsers) => {
-      if (firestoreUsers && firestoreUsers.length >= 0) {
+      if (firestoreUsers) {
         setRegisteredUsers(firestoreUsers);
         // Sync to local registry cache
         try {
           const regMap: Record<string, SessionUser> = {};
           firestoreUsers.forEach(u => {
-            if (u.uid) regMap[u.uid] = u;
+            const key = u.uid || u.username || u.id;
+            if (key) regMap[key] = u;
           });
+
+          // Ensure current logged in user is in registry & Firestore
+          const currentUserRaw = localStorage.getItem('mtfeed_user');
+          if (currentUserRaw) {
+            try {
+              const cur = JSON.parse(currentUserRaw);
+              if (cur && (cur.uid || cur.username)) {
+                const key = cur.uid || cur.username || cur.id;
+                if (!regMap[key]) {
+                  regMap[key] = cur;
+                  saveUserToFirestore(cur);
+                }
+              }
+            } catch (e) {}
+          }
+
           localStorage.setItem('mtfeed_accounts_registry', JSON.stringify(regMap));
         } catch (e) {}
       }
@@ -199,15 +216,21 @@ export default function App() {
     return INITIAL_POSTS;
   });
 
-  // Save posts to localStorage and Firestore
+  // Always sync logged in user to Firestore and local registry
+  useEffect(() => {
+    if (user) {
+      saveRegisteredUser(user);
+      saveUserToFirestore(user);
+    }
+  }, [user]);
+
+  // Save posts to localStorage for offline cache
   useEffect(() => {
     try {
       localStorage.setItem('mtfeed_posts', JSON.stringify(posts));
       if (mtFeedChannel) {
         mtFeedChannel.postMessage({ type: 'POSTS_UPDATED' });
       }
-      // Sync to Cloud Firestore
-      syncPostsToFirestore(posts);
     } catch (e) {
       console.error(e);
     }

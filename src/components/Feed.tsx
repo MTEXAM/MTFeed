@@ -3,7 +3,7 @@ import { PostComposer } from './PostComposer';
 import { PostItem } from './PostItem';
 import { MOCK_USERS } from '../data';
 import { Post, Comment, SessionUser } from '../types';
-import { deletePostFromFirestore } from '../utils/firestoreService';
+import { deletePostFromFirestore, savePostToFirestore } from '../utils/firestoreService';
 
 export function Feed({ 
   posts = [],
@@ -82,6 +82,7 @@ export function Feed({
     if (setPosts) {
       setPosts(prev => [newPost, ...prev]);
     }
+    savePostToFirestore(newPost);
 
     // Extract @mentions and notify recipient
     const matches = content.match(/@([\w\u0E00-\u0E7F]+)/g);
@@ -111,7 +112,9 @@ export function Feed({
     if (setPosts) {
       setPosts(prev => prev.map(p => {
         if (p.id === postId) {
-          return { ...p, isReported: true };
+          const updated = { ...p, isReported: true };
+          savePostToFirestore(updated);
+          return updated;
         }
         return p;
       }));
@@ -144,6 +147,20 @@ export function Feed({
       content,
       createdAt: 'เมื่อสักครู่'
     };
+
+    const targetPost = posts.find(p => p.id === postId);
+    if (targetPost) {
+      const newComments = [...(targetPost.comments || []), newComment];
+      const updatedPost: Post = {
+        ...targetPost,
+        comments: newComments,
+        stats: {
+          ...targetPost.stats,
+          replies: newComments.length
+        }
+      };
+      savePostToFirestore(updatedPost);
+    }
 
     if (setPosts) {
       setPosts(prev => prev.map(post => {
@@ -183,6 +200,34 @@ export function Feed({
       onLoginClick();
       return;
     }
+
+    const targetPost = posts.find(p => p.id === postId);
+    if (targetPost) {
+      const newStats = { ...targetPost.stats };
+      const newInteractions = { ...(targetPost.userInteractions || {}) };
+
+      if (type === 'like') {
+        const currentlyLiked = newInteractions.liked;
+        newInteractions.liked = !currentlyLiked;
+        newStats.likes += currentlyLiked ? -1 : 1;
+      } else if (type === 'repost') {
+        const currentlyReposted = newInteractions.reposted;
+        newInteractions.reposted = !currentlyReposted;
+        newStats.reposts += currentlyReposted ? -1 : 1;
+      } else if (type === 'bookmark') {
+        const currentlyBookmarked = newInteractions.bookmarked;
+        newInteractions.bookmarked = !currentlyBookmarked;
+        newStats.bookmarks += currentlyBookmarked ? -1 : 1;
+      }
+
+      const updatedPost: Post = {
+        ...targetPost,
+        stats: newStats,
+        userInteractions: newInteractions
+      };
+      savePostToFirestore(updatedPost);
+    }
+
     if (setPosts) {
       setPosts(prev => prev.map(post => {
         if (post.id !== postId) return post;
@@ -218,6 +263,26 @@ export function Feed({
       onLoginClick();
       return;
     }
+
+    const targetPost = posts.find(p => p.id === postId);
+    if (targetPost && targetPost.poll && !targetPost.userInteractions?.votedOptionId) {
+      const newPoll = { ...targetPost.poll };
+      newPoll.options = newPoll.options.map(opt => 
+        opt.id === optionId ? { ...opt, votes: opt.votes + 1 } : opt
+      );
+      newPoll.totalVotes += 1;
+
+      const updatedPost: Post = {
+        ...targetPost,
+        poll: newPoll,
+        userInteractions: {
+          ...(targetPost.userInteractions || {}),
+          votedOptionId: optionId
+        }
+      };
+      savePostToFirestore(updatedPost);
+    }
+
     if (setPosts) {
       setPosts(prev => prev.map(post => {
         if (post.id !== postId || !post.poll || post.userInteractions?.votedOptionId) return post;

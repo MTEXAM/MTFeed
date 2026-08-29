@@ -13,15 +13,77 @@ import {
 import { db } from '../lib/firebase';
 import { Post, SessionUser } from '../types';
 import { INITIAL_POSTS } from '../data';
+import { DEFAULT_ACTIVE_USERS } from './auth';
 
 const USERS_COLLECTION = 'users';
 const POSTS_COLLECTION = 'posts';
+
+// Seed initial default users to Firestore if collection is brand new
+export async function seedInitialUsers(): Promise<void> {
+  try {
+    const batch = writeBatch(db);
+    
+    // 1. Seed DEFAULT_ACTIVE_USERS
+    Object.values(DEFAULT_ACTIVE_USERS).forEach((user) => {
+      const docId = (user.uid || user.username).toString();
+      const userRef = doc(db, USERS_COLLECTION, docId);
+      const userData: any = { ...user };
+      Object.keys(userData).forEach(key => {
+        if (userData[key] === undefined) delete userData[key];
+      });
+      batch.set(userRef, {
+        ...userData,
+        createdAtMs: Date.now()
+      }, { merge: true });
+    });
+
+    // 2. Seed current logged in user if stored locally
+    try {
+      const localUserRaw = localStorage.getItem('mtfeed_user');
+      if (localUserRaw) {
+        const localUser = JSON.parse(localUserRaw);
+        if (localUser && (localUser.uid || localUser.username)) {
+          const docId = (localUser.uid || localUser.username).toString();
+          const userRef = doc(db, USERS_COLLECTION, docId);
+          const userData: any = { ...localUser };
+          Object.keys(userData).forEach(key => {
+            if (userData[key] === undefined) delete userData[key];
+          });
+          batch.set(userRef, {
+            ...userData,
+            createdAtMs: Date.now()
+          }, { merge: true });
+        }
+      }
+    } catch (e) {}
+
+    await batch.commit();
+    localStorage.setItem('mtfeed_users_seeded_v1', 'true');
+  } catch (e) {
+    console.error('Failed to seed initial users to Firestore:', e);
+  }
+}
 
 // Listen to registered users in Firestore
 export function subscribeToUsers(onUsersUpdate: (users: SessionUser[]) => void) {
   try {
     const usersRef = collection(db, USERS_COLLECTION);
     return onSnapshot(usersRef, (snapshot) => {
+      if (snapshot.empty) {
+        const hasSeeded = localStorage.getItem('mtfeed_users_seeded_v1');
+        if (!hasSeeded) {
+          localStorage.setItem('mtfeed_users_seeded_v1', 'true');
+          seedInitialUsers();
+          onUsersUpdate(Object.values(DEFAULT_ACTIVE_USERS));
+          return;
+        } else {
+          onUsersUpdate([]);
+          return;
+        }
+      }
+
+      localStorage.setItem('mtfeed_users_seeded_v1', 'true');
+
       const usersList: SessionUser[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data() as SessionUser;
@@ -44,9 +106,15 @@ export async function saveUserToFirestore(user: SessionUser): Promise<void> {
   if (!user || (!user.uid && !user.username)) return;
   const docId = (user.uid || user.username).toString();
   try {
+    const userData: any = { ...user };
+    Object.keys(userData).forEach(key => {
+      if (userData[key] === undefined) {
+        delete userData[key];
+      }
+    });
     const userRef = doc(db, USERS_COLLECTION, docId);
     await setDoc(userRef, {
-      ...user,
+      ...userData,
       updatedAt: new Date().toISOString()
     }, { merge: true });
   } catch (e) {
@@ -60,8 +128,8 @@ export async function deleteUserFromFirestore(uidOrUsername: string): Promise<bo
   try {
     const usersRef = collection(db, USERS_COLLECTION);
     const snapshot = await getDocs(usersRef);
-    let deleted = false;
-    const batch = writeBatch(db);
+    const deletePromises: Promise<void>[] = [];
+    let found = false;
 
     snapshot.forEach((docSnap) => {
       const u = docSnap.data() as SessionUser;
@@ -69,17 +137,18 @@ export async function deleteUserFromFirestore(uidOrUsername: string): Promise<bo
       if (
         docId === clean ||
         (u.uid && u.uid.toLowerCase().replace(/^#/, '') === clean) ||
-        (u.username && u.username.toLowerCase().replace(/^@/, '') === clean)
+        (u.username && u.username.toLowerCase().replace(/^@/, '') === clean) ||
+        (u.id && String(u.id).toLowerCase() === clean)
       ) {
-        batch.delete(docSnap.ref);
-        deleted = true;
+        deletePromises.push(deleteDoc(doc(db, USERS_COLLECTION, docSnap.id)));
+        found = true;
       }
     });
 
-    if (deleted) {
-      await batch.commit();
+    if (found) {
+      await Promise.all(deletePromises);
     }
-    return deleted;
+    return found;
   } catch (e) {
     console.error('Error deleting user from Firestore:', e);
     return false;
@@ -91,18 +160,25 @@ export async function clearAllUsersFromFirestore(keepUser?: SessionUser): Promis
   try {
     const usersRef = collection(db, USERS_COLLECTION);
     const snapshot = await getDocs(usersRef);
-    const batch = writeBatch(db);
+    const deletePromises: Promise<void>[] = [];
 
     snapshot.forEach((docSnap) => {
       const u = docSnap.data() as SessionUser;
-      if (keepUser && (docSnap.id === keepUser.uid || u.username === keepUser.username)) {
-        // Keep current admin user
-      } else {
-        batch.delete(docSnap.ref);
+      const docId = docSnap.id;
+      
+      const isKeepDoc = keepUser && (
+        docId.toLowerCase() === (keepUser.uid || '').toLowerCase() ||
+        docId.toLowerCase() === (keepUser.username || '').toLowerCase() ||
+        (u.uid && u.uid.toLowerCase() === (keepUser.uid || '').toLowerCase()) ||
+        (u.username && u.username.toLowerCase() === (keepUser.username || '').toLowerCase())
+      );
+
+      if (!isKeepDoc) {
+        deletePromises.push(deleteDoc(doc(db, USERS_COLLECTION, docId)));
       }
     });
 
-    await batch.commit();
+    await Promise.all(deletePromises);
 
     if (keepUser) {
       await saveUserToFirestore(keepUser);
@@ -118,10 +194,21 @@ export function subscribeToPosts(onPostsUpdate: (posts: Post[]) => void) {
     const postsRef = collection(db, POSTS_COLLECTION);
     return onSnapshot(postsRef, (snapshot) => {
       if (snapshot.empty) {
-        // Seed initial posts if Firestore collection is brand new
-        seedInitialPosts();
-        return;
+        // Only seed initial posts if database has NEVER been initialized
+        const hasSeeded = localStorage.getItem('mtfeed_has_seeded_v1');
+        if (!hasSeeded) {
+          localStorage.setItem('mtfeed_has_seeded_v1', 'true');
+          seedInitialPosts();
+          return;
+        } else {
+          onPostsUpdate([]);
+          return;
+        }
       }
+
+      // Mark as seeded since posts exist
+      localStorage.setItem('mtfeed_has_seeded_v1', 'true');
+
       const postsList: Post[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data() as Post;
@@ -151,8 +238,12 @@ async function seedInitialPosts() {
     const batch = writeBatch(db);
     INITIAL_POSTS.forEach((post, index) => {
       const postRef = doc(db, POSTS_COLLECTION, post.id);
+      const postData: any = { ...post };
+      Object.keys(postData).forEach(key => {
+        if (postData[key] === undefined) delete postData[key];
+      });
       batch.set(postRef, {
-        ...post,
+        ...postData,
         createdAtMs: Date.now() - index * 3600000
       });
     });
@@ -166,9 +257,15 @@ async function seedInitialPosts() {
 export async function savePostToFirestore(post: Post): Promise<void> {
   if (!post || !post.id) return;
   try {
+    const postData: any = { ...post };
+    Object.keys(postData).forEach(key => {
+      if (postData[key] === undefined) {
+        delete postData[key];
+      }
+    });
     const postRef = doc(db, POSTS_COLLECTION, post.id);
     await setDoc(postRef, {
-      ...post,
+      ...postData,
       createdAtMs: (post as any).createdAtMs || Date.now()
     }, { merge: true });
   } catch (e) {
