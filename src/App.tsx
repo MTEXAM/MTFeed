@@ -58,7 +58,9 @@ function getInitialUser(): SessionUser | null {
     
     if (typeof window !== 'undefined') {
       const referrer = document.referrer || '';
-      // Only allow auto-login via URL if the user clicked a link from the official exam site or navigating within the app itself
+      console.log('Debug - Referrer detected:', referrer);
+      
+      // การตรวจสอบต้นทางที่เข้มงวดขึ้น: ต้องมาจากเว็บทำข้อสอบ หรือเป็นการเปลี่ยนหน้าภายใน
       const validReferrers = [
         'mtexam-passalldiwa.ai.studio', 
         'mt-feed.vercel.app',
@@ -67,7 +69,8 @@ function getInitialUser(): SessionUser | null {
         'ai.studio'
       ];
       
-      if (validReferrers.some(r => referrer.includes(r))) {
+      // หาก referrer ว่างเปล่า อาจเป็นการพิมพ์เองหรือเปิดตรง ให้ถือว่าไม่น่าเชื่อถือสำหรับ auto-login
+      if (referrer && validReferrers.some(r => referrer.includes(r))) {
         isFromValidSource = true;
       }
       
@@ -79,28 +82,29 @@ function getInitialUser(): SessionUser | null {
     }
 
     if (params) {
+      // ลบพารามิเตอร์ออกทุกกรณีเมื่อพบ เพื่อความสะอาดของ URL
+      try {
+        if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
+          const cleanUrl = window.location.pathname + (window.location.hash ? window.location.hash.split('?')[0] : '');
+          window.history.replaceState({}, document.title, cleanUrl);
+        }
+      } catch (e) {
+        console.error('Error clearing URL parameters:', e);
+      }
+
       const usernameParam = params.get('username') || params.get('user') || params.get('u') || params.get('student_name') || params.get('name') || params.get('id');
       const uidParam = params.get('uid') || params.get('userId') || params.get('user_id') || params.get('student_id') || params.get('token') || params.get('key');
-      const displayNameParam = params.get('displayName') || params.get('display_name') || params.get('fullname') || params.get('name');
-      const avatarParam = params.get('avatar') || params.get('picture') || params.get('photo') || params.get('img') || params.get('avatar_url');
-      const roleParam = params.get('role') || params.get('isAdmin') || params.get('is_admin') || params.get('admin');
-      const userGroupParam = params.get('userGroup') || params.get('role_group') || params.get('group') || params.get('status') || params.get('user_group');
-      const academicYearParam = params.get('academicYear') || params.get('academic_year') || params.get('year') || params.get('class_year');
-      const facultyParam = params.get('faculty') || params.get('fac') || params.get('department');
-      const universityParam = params.get('university') || params.get('uni') || params.get('u_name') || params.get('institution') || params.get('school');
-
+      
       if (usernameParam || uidParam) {
-        // ลบพารามิเตอร์ออกก่อนตรวจสอบสิทธิ์ เพื่อความปลอดภัยและ UI ที่สะอาด
-        try {
-          if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
-            const cleanUrl = window.location.pathname + (window.location.hash ? window.location.hash.split('?')[0] : '');
-            window.history.replaceState({}, document.title, cleanUrl);
-          }
-        } catch (e) {
-          console.error('Error clearing URL parameters:', e);
-        }
-
         if (isFromValidSource) {
+          const displayNameParam = params.get('displayName') || params.get('display_name') || params.get('fullname') || params.get('name');
+          const avatarParam = params.get('avatar') || params.get('picture') || params.get('photo') || params.get('img') || params.get('avatar_url');
+          const roleParam = params.get('role') || params.get('isAdmin') || params.get('is_admin') || params.get('admin');
+          const userGroupParam = params.get('userGroup') || params.get('role_group') || params.get('group') || params.get('status') || params.get('user_group');
+          const academicYearParam = params.get('academicYear') || params.get('academic_year') || params.get('year') || params.get('class_year');
+          const facultyParam = params.get('faculty') || params.get('fac') || params.get('department');
+          const universityParam = params.get('university') || params.get('uni') || params.get('u_name') || params.get('institution') || params.get('school');
+
           const autoUser = resolveUserAccount({
             username: usernameParam || uidParam || 'user',
             uidParam,
@@ -122,6 +126,8 @@ function getInitialUser(): SessionUser | null {
           }
 
           return autoUser;
+        } else {
+            console.warn("Auto-login rejected: Source not verified or direct URL entry.");
         }
       }
     }
