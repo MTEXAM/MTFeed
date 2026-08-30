@@ -752,17 +752,6 @@ export default function App() {
     const lookupKey = (userToView.username || '').replace(/^@/, '').toLowerCase();
     const lookupUid = (userToView as SessionUser).uid || userToView.id;
 
-    // Privacy restriction: Only admins and the user themselves can view this profile
-    const isSelf = user && (
-      (user.username && user.username.replace(/^@/, '').toLowerCase() === lookupKey) ||
-      (user.uid && lookupUid && user.uid === lookupUid)
-    );
-    
-    if (!user?.isAdmin && !isSelf) {
-      alert("🔒 ขออภัย ไม่สามารถดูโปรไฟล์ของผู้อื่นได้ เพื่อความเป็นส่วนตัวของสมาชิกในระบบ");
-      return;
-    }
-
     const foundInRegistry = registeredUsers.find(u => 
       (u.username && u.username.replace(/^@/, '').toLowerCase() === lookupKey) ||
       (lookupUid && u.uid === lookupUid)

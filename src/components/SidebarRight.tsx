@@ -133,8 +133,8 @@ export function SidebarRight({
 
         {/* Members in System Box */}
         <div 
-          onClick={onOpenOnlineModal}
-          className="bg-gray-50 hover:bg-gray-100/90 rounded-2xl p-5 border border-gray-100 shadow-xs cursor-pointer transition-all group"
+          onClick={currentUser?.isAdmin ? onOpenOnlineModal : undefined}
+          className={`bg-gray-50 rounded-2xl p-5 border border-gray-100 shadow-xs transition-all group ${currentUser?.isAdmin ? 'hover:bg-gray-100/90 cursor-pointer' : ''}`}
         >
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center space-x-2">
@@ -143,30 +143,38 @@ export function SidebarRight({
               </div>
               <h2 className="text-base font-bold text-gray-900 group-hover:text-red-600 transition-colors">สมาชิกในระบบ</h2>
             </div>
-            <span className="text-xs text-red-600 font-medium bg-red-50 px-2 py-0.5 rounded-full group-hover:bg-red-600 group-hover:text-white transition-colors">
-              ดูรายชื่อ →
-            </span>
+            {currentUser?.isAdmin && (
+              <span className="text-xs text-red-600 font-medium bg-red-50 px-2 py-0.5 rounded-full group-hover:bg-red-600 group-hover:text-white transition-colors">
+                ดูรายชื่อ →
+              </span>
+            )}
           </div>
 
           <div className="flex items-center justify-between">
             <div className="flex -space-x-2 overflow-hidden py-1">
-              {onlineUsers.length > 0 ? (
-                onlineUsers.slice(0, 5).map((u) => (
+              {currentUser?.isAdmin ? (
+                onlineUsers.length > 0 ? (
+                  onlineUsers.slice(0, 5).map((u) => (
+                    <img
+                      key={u.uid || u.username}
+                      className="inline-block h-8 w-8 rounded-full ring-2 ring-white bg-gray-200 object-cover shadow-xs"
+                      src={u.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(u.username)}&backgroundColor=cccccc`}
+                      alt={u.name || u.username}
+                      title={u.name || u.username}
+                    />
+                  ))
+                ) : currentUser ? (
                   <img
-                    key={u.uid || u.username}
                     className="inline-block h-8 w-8 rounded-full ring-2 ring-white bg-gray-200 object-cover shadow-xs"
-                    src={u.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(u.username)}&backgroundColor=cccccc`}
-                    alt={u.name || u.username}
-                    title={u.name || u.username}
+                    src={currentUser.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(currentUser.username)}&backgroundColor=cccccc`}
+                    alt={currentUser.name || currentUser.username}
+                    title={currentUser.name || currentUser.username}
                   />
-                ))
-              ) : currentUser ? (
-                <img
-                  className="inline-block h-8 w-8 rounded-full ring-2 ring-white bg-gray-200 object-cover shadow-xs"
-                  src={currentUser.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(currentUser.username)}&backgroundColor=cccccc`}
-                  alt={currentUser.name || currentUser.username}
-                  title={currentUser.name || currentUser.username}
-                />
+                ) : (
+                  <div className="h-8 w-8 rounded-full ring-2 ring-white bg-gray-200 flex items-center justify-center text-xs text-gray-400">
+                    <Users className="w-4 h-4" />
+                  </div>
+                )
               ) : (
                 <div className="h-8 w-8 rounded-full ring-2 ring-white bg-gray-200 flex items-center justify-center text-xs text-gray-400">
                   <Users className="w-4 h-4" />
