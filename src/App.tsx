@@ -213,15 +213,14 @@ export default function App() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const filtered = parsed.filter((p: Post) => p && p.id && !deletedIds.has(p.id));
-          if (filtered.length > 0) return filtered;
+        if (Array.isArray(parsed)) {
+          return parsed.filter((p: Post) => p && p.id && !deletedIds.has(p.id));
         }
       } catch (e) {
         console.error(e);
       }
     }
-    return INITIAL_POSTS.filter(p => !deletedIds.has(p.id));
+    return [];
   });
 
   // Always sync logged in user to Firestore and local registry
@@ -235,11 +234,11 @@ export default function App() {
   // Save posts to localStorage for offline cache
   useEffect(() => {
     try {
-      if (posts && posts.length > 0) {
-        localStorage.setItem('mtfeed_posts', JSON.stringify(posts));
-        if (mtFeedChannel) {
-          mtFeedChannel.postMessage({ type: 'POSTS_UPDATED' });
-        }
+      const deletedIds = getDeletedPostIds();
+      const validPosts = (posts || []).filter(p => p && p.id && !deletedIds.has(p.id));
+      localStorage.setItem('mtfeed_posts', JSON.stringify(validPosts));
+      if (mtFeedChannel) {
+        mtFeedChannel.postMessage({ type: 'POSTS_UPDATED' });
       }
     } catch (e) {
       console.error(e);

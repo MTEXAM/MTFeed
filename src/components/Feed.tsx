@@ -67,7 +67,7 @@ export function Feed({
     // Automatically extract hashtags from content if any
     const tagsFromContent = content.match(/#[\w\u0E00-\u0E7F]+/g) || [];
 
-    const newPostId = `new_${Date.now()}`;
+    const newPostId = `post_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const createdAtMs = Date.now();
     const newPost: Post = {
       id: newPostId,
@@ -86,7 +86,7 @@ export function Feed({
     if (setPosts) {
       setPosts(prev => [newPost, ...prev]);
     }
-    savePostToFirestore(newPost);
+    savePostToFirestore(newPost).catch(e => console.error('Failed to save post:', e));
 
     // Extract @mentions and notify recipient
     const matches = content.match(/@([\w\u0E00-\u0E7F]+)/g);

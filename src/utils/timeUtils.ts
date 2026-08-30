@@ -44,17 +44,17 @@ export function formatRelativeOrRealTime(timestampMs?: number, fallbackStr?: str
 
   const diffMin = Math.floor(diffMs / 60_000);
   if (diffMin < 60) {
-    return `${diffMin} นาทีที่แล้ว`;
+    return `${Math.max(1, diffMin)} นาทีที่แล้ว`;
   }
 
-  const diffHour = Math.floor(diffMin / 3600_000);
+  const diffHour = Math.floor(diffMs / 3600_000);
   if (diffHour < 24) {
-    return `${diffHour} ชั่วโมงที่แล้ว`;
+    return `${Math.max(1, diffHour)} ชั่วโมงที่แล้ว`;
   }
 
-  const diffDay = Math.floor(diffHour / 24);
+  const diffDay = Math.floor(diffMs / (24 * 3600_000));
   if (diffDay < 7) {
-    return `${diffDay} วันที่แล้ว`;
+    return `${Math.max(1, diffDay)} วันที่แล้ว`;
   }
 
   return formatRealTime(timestampMs);

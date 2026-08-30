@@ -189,6 +189,25 @@ export async function clearAllUsersFromFirestore(keepUser?: SessionUser): Promis
   }
 }
 
+// Recursive sanitizer to remove any undefined fields before writing to Firestore
+function sanitizeForFirestore(val: any): any {
+  if (val === null || val === undefined) return null;
+  if (Array.isArray(val)) {
+    return val.map(sanitizeForFirestore).filter(v => v !== undefined);
+  }
+  if (typeof val === 'object' && !(val instanceof Date)) {
+    const cleaned: any = {};
+    for (const key of Object.keys(val)) {
+      const v = val[key];
+      if (v !== undefined) {
+        cleaned[key] = sanitizeForFirestore(v);
+      }
+    }
+    return cleaned;
+  }
+  return val;
+}
+
 // Local and Cloud tracking of deleted post IDs
 const DELETED_POSTS_KEY = 'mtfeed_deleted_post_ids';
 
@@ -199,7 +218,9 @@ export function getDeletedPostIds(): Set<string> {
     if (raw) {
       const arr = JSON.parse(raw);
       if (Array.isArray(arr)) {
-        arr.forEach(id => ids.add(String(id)));
+        arr.forEach(id => {
+          if (id) ids.add(String(id));
+        });
       }
     }
   } catch (e) {}
@@ -212,6 +233,16 @@ export function markPostAsDeletedLocally(postId: string) {
     const ids = getDeletedPostIds();
     ids.add(postId);
     localStorage.setItem(DELETED_POSTS_KEY, JSON.stringify(Array.from(ids)));
+    
+    // Also remove from local cached posts
+    const localPostsRaw = localStorage.getItem('mtfeed_posts');
+    if (localPostsRaw) {
+      const parsed = JSON.parse(localPostsRaw);
+      if (Array.isArray(parsed)) {
+        const filtered = parsed.filter((p: any) => p && p.id !== postId);
+        localStorage.setItem('mtfeed_posts', JSON.stringify(filtered));
+      }
+    }
   } catch (e) {}
 }
 
@@ -219,7 +250,7 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
   const deletedIds = getDeletedPostIds();
   const map = new Map<string, Post>();
 
-  // 1. Add incoming posts
+  // 1. Add cloud/incoming posts first (authoritative)
   if (Array.isArray(incomingPosts)) {
     incomingPosts.forEach(p => {
       if (p && p.id && !deletedIds.has(p.id)) {
@@ -228,13 +259,17 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
     });
   }
 
-  // 2. Preserve existing local posts
+  // 2. Preserve any existing local posts that are NOT in deleted list
   if (Array.isArray(existingPosts)) {
     existingPosts.forEach(p => {
       if (p && p.id && !deletedIds.has(p.id)) {
         if (!map.has(p.id)) {
+          // Keep local post so user content is NEVER lost
           map.set(p.id, p);
+          // Sync missing post to Firestore in background
+          savePostToFirestore(p).catch(() => {});
         } else {
+          // Merge local comments and interactions if newer
           const cloudPost = map.get(p.id)!;
           const mergedCommentsMap = new Map<string, Comment>();
           (cloudPost.comments || []).forEach(c => c && c.id && mergedCommentsMap.set(c.id, c));
@@ -274,7 +309,7 @@ export function subscribeToPosts(onPostsUpdate: (posts: Post[]) => void) {
     const metaRef = doc(db, 'system_config', 'posts_seeded');
     const deletedDocRef = doc(db, 'system_config', 'deleted_posts');
 
-    // Subscribe to cloud deleted posts list
+    // 1. Subscribe to cloud deleted posts list
     onSnapshot(deletedDocRef, (snap) => {
       if (snap.exists()) {
         const data = snap.data();
@@ -282,7 +317,7 @@ export function subscribeToPosts(onPostsUpdate: (posts: Post[]) => void) {
           const currentLocal = getDeletedPostIds();
           let changed = false;
           data.ids.forEach((id: string) => {
-            if (!currentLocal.has(id)) {
+            if (id && !currentLocal.has(id)) {
               currentLocal.add(id);
               changed = true;
             }
@@ -294,15 +329,23 @@ export function subscribeToPosts(onPostsUpdate: (posts: Post[]) => void) {
           }
         }
       }
-    }, () => {});
+    }, (err) => {
+      console.warn('Deleted posts sync error:', err);
+    });
 
-    // Check seed status once on initialization
+    // 2. Initial seed check - ONLY once for a brand new empty database
     getDoc(metaRef).then(async (metaSnap) => {
       if (!metaSnap.exists()) {
         try {
           const existingSnap = await getDocs(postsRef);
           if (existingSnap.empty) {
-            await seedInitialPosts();
+            const deleted = getDeletedPostIds();
+            // If user has already deleted posts, DO NOT seed example posts
+            if (deleted.size === 0) {
+              await seedInitialPosts();
+            } else {
+              await setDoc(metaRef, { seeded: true, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+            }
           } else {
             await setDoc(metaRef, { seeded: true, updatedAt: Date.now() }, { merge: true }).catch(() => {});
           }
@@ -314,11 +357,11 @@ export function subscribeToPosts(onPostsUpdate: (posts: Post[]) => void) {
       console.warn('Seed status check skipped:', e);
     });
 
+    // 3. Listen to live posts snapshot
     return onSnapshot(postsRef, (snapshot) => {
       const deletedIds = getDeletedPostIds();
       if (snapshot.empty) {
-        const fallbacks = INITIAL_POSTS.filter(p => !deletedIds.has(p.id));
-        onPostsUpdate(fallbacks);
+        onPostsUpdate([]);
         return;
       }
 
@@ -329,15 +372,6 @@ export function subscribeToPosts(onPostsUpdate: (posts: Post[]) => void) {
           postsList.push(data);
         }
       });
-
-      if (postsList.length === 0) {
-        // If all snapshot posts were deleted or invalid, fallback to remaining non-deleted initial posts if any
-        const fallbacks = INITIAL_POSTS.filter(p => !deletedIds.has(p.id));
-        if (fallbacks.length > 0 && snapshot.size === 0) {
-          onPostsUpdate(fallbacks);
-          return;
-        }
-      }
 
       // Sort posts by newest
       postsList.sort((a, b) => {
@@ -356,7 +390,7 @@ export function subscribeToPosts(onPostsUpdate: (posts: Post[]) => void) {
   }
 }
 
-// Seed initial posts to Firestore
+// Seed initial posts to Firestore (only called on brand new system initialization)
 async function seedInitialPosts() {
   try {
     const deletedIds = getDeletedPostIds();
@@ -366,11 +400,8 @@ async function seedInitialPosts() {
       if (!deletedIds.has(post.id)) {
         count++;
         const postRef = doc(db, POSTS_COLLECTION, post.id);
-        const postData: any = { ...post };
-        Object.keys(postData).forEach(key => {
-          if (postData[key] === undefined) delete postData[key];
-        });
-        const createdAtMs = post.createdAtMs || (Date.now() - index * 3600000);
+        const postData = sanitizeForFirestore(post);
+        const createdAtMs = post.createdAtMs || (Date.now() - (index + 1) * 3600000);
         batch.set(postRef, {
           ...postData,
           createdAtMs
@@ -398,12 +429,7 @@ export async function savePostToFirestore(post: Post): Promise<void> {
   if (deletedIds.has(post.id)) return; // Don't save deleted post
 
   try {
-    const postData: any = { ...post };
-    Object.keys(postData).forEach(key => {
-      if (postData[key] === undefined) {
-        delete postData[key];
-      }
-    });
+    const postData = sanitizeForFirestore(post);
     const postRef = doc(db, POSTS_COLLECTION, post.id);
     await setDoc(postRef, {
       ...postData,
@@ -420,10 +446,11 @@ export async function syncPostsToFirestore(posts: Post[]): Promise<void> {
     const deletedIds = getDeletedPostIds();
     const batch = writeBatch(db);
     posts.forEach((post) => {
-      if (!deletedIds.has(post.id)) {
+      if (post && post.id && !deletedIds.has(post.id)) {
         const postRef = doc(db, POSTS_COLLECTION, post.id);
+        const postData = sanitizeForFirestore(post);
         batch.set(postRef, {
-          ...post,
+          ...postData,
           createdAtMs: (post as any).createdAtMs || Date.now()
         }, { merge: true });
       }
@@ -436,19 +463,23 @@ export async function syncPostsToFirestore(posts: Post[]): Promise<void> {
   }
 }
 
-// Delete post from Firestore
+// Delete post from Firestore permanently
 export async function deletePostFromFirestore(postId: string): Promise<void> {
   if (!postId) return;
   markPostAsDeletedLocally(postId);
 
   try {
+    // 1. Delete document from posts collection
     const postRef = doc(db, POSTS_COLLECTION, postId);
     await deleteDoc(postRef).catch(() => {});
 
-    // Sync deleted post IDs with Cloud Firestore
+    // 2. Persist deleted post ID in system_config/deleted_posts
     const deletedDocRef = doc(db, 'system_config', 'deleted_posts');
-    const ids = Array.from(getDeletedPostIds());
-    await setDoc(deletedDocRef, { ids, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+    const snap = await getDoc(deletedDocRef).catch(() => null);
+    const existingCloudIds: string[] = snap && snap.exists() ? (snap.data().ids || []) : [];
+    const combinedIds = Array.from(new Set([...existingCloudIds, ...Array.from(getDeletedPostIds()), postId]));
+
+    await setDoc(deletedDocRef, { ids: combinedIds, updatedAt: Date.now() }, { merge: true }).catch(() => {});
   } catch (e) {
     console.warn('Error deleting post from Firestore (local removal preserved):', e);
   }
