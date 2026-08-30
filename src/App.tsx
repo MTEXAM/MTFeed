@@ -15,7 +15,7 @@ import { PostItem } from './components/PostItem';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post, User } from './types';
-import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid, formatUserBadge } from './utils/auth';
+import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid, formatUserBadge, DEFAULT_ACTIVE_USERS } from './utils/auth';
 import { subscribeToPosts, subscribeToUsers, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore, syncPostsToFirestore, getUserFromFirestore } from './utils/firestoreService';
 import { formatRealTime } from './utils/timeUtils';
 import { INITIAL_POSTS } from './data';
@@ -201,45 +201,49 @@ export default function App() {
     // 1. Subscribe to Cloud Firestore Users
     const unsubscribeUsers = subscribeToUsers((firestoreUsers) => {
       if (firestoreUsers) {
-        // Sync to local registry cache, preserving local custom profile changes
         try {
-          const localRegistry = getRegisteredUsers();
-          const regMap: Record<string, SessionUser> = { ...localRegistry };
+          const regMap: Record<string, SessionUser> = {};
           
           firestoreUsers.forEach(u => {
             const key = u.uid || u.username || u.id;
             if (key) {
-              const existingLocal = localRegistry[key];
-              regMap[key] = {
-                ...(u || {}),
-                ...(existingLocal || {}),
-                uid: u.uid || existingLocal?.uid || key,
-                username: u.username || existingLocal?.username || key,
-                name: existingLocal?.name || u.name,
-                avatar: existingLocal?.avatar || u.avatar
-              } as SessionUser;
+              regMap[key] = u;
+              
+              // Safe Real-time Hydration: If this is the currently logged in user, 
+              // and the remote Firestore profile is newer, sync it to local state & storage!
+              const currentUserRaw = localStorage.getItem('mtfeed_user');
+              if (currentUserRaw) {
+                try {
+                  const cur = JSON.parse(currentUserRaw);
+                  if (cur && (u.uid === cur.uid || u.username === cur.username)) {
+                    const localUpdatedAt = cur.updatedAt || 0;
+                    const remoteUpdatedAt = u.updatedAt || 0;
+                    
+                    if (remoteUpdatedAt > localUpdatedAt) {
+                      console.log('Real-time hydrating current user profile from Firestore update');
+                      setUser(u);
+                      localStorage.setItem('mtfeed_user', JSON.stringify(u));
+                      sessionStorage.setItem('mtfeed_user', JSON.stringify(u));
+                    }
+                  }
+                } catch (err) {}
+              }
             }
           });
 
-          // Ensure current logged in user is in registry & Firestore
-          const currentUserRaw = localStorage.getItem('mtfeed_user');
-          if (currentUserRaw) {
-            try {
-              const cur = JSON.parse(currentUserRaw);
-              if (cur && (cur.uid || cur.username)) {
-                const key = cur.uid || cur.username || cur.id;
-                regMap[key] = {
-                  ...(regMap[key] || {}),
-                  ...cur
-                };
-                saveUserToFirestore(regMap[key]);
-              }
-            } catch (e) {}
-          }
+          // Also merge standard default accounts if they don't exist in Firestore
+          (Object.values(DEFAULT_ACTIVE_USERS) as SessionUser[]).forEach((defaultUser: SessionUser) => {
+            const key = defaultUser.uid || defaultUser.username || defaultUser.id;
+            if (key && !regMap[key]) {
+              regMap[key] = defaultUser;
+            }
+          });
 
           localStorage.setItem('mtfeed_accounts_registry', JSON.stringify(regMap));
           setRegisteredUsers(Object.values(regMap));
-        } catch (e) {}
+        } catch (e) {
+          console.error('Error handling firestore users update:', e);
+        }
       }
     });
 
@@ -369,14 +373,6 @@ export default function App() {
     }
     hydrateUser();
   }, []);
-
-  // Always sync logged in user to Firestore and local registry
-  useEffect(() => {
-    if (user) {
-      saveRegisteredUser(user);
-      saveUserToFirestore(user);
-    }
-  }, [user]);
 
   // Save posts to localStorage for offline cache
   useEffect(() => {
