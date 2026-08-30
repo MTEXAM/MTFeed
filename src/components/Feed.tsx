@@ -233,16 +233,26 @@ export function Feed({
     }
 
     const targetPost = posts.find(p => p.id === postId);
+    let updatedPost: Post | null = null;
+
     if (targetPost) {
       const newStats = { ...targetPost.stats };
       const newInteractions = { ...(targetPost.userInteractions || {}) };
       let newRepostedBy = [...(targetPost.repostedBy || [])];
       let newRepostedUsers = [...(targetPost.repostedUsers || [])];
+      let newLikedBy = [...(targetPost.likedBy || [])];
+      let newBookmarkedBy = [...(targetPost.bookmarkedBy || [])];
 
-      if (type === 'like') {
-        const currentlyLiked = newInteractions.liked;
-        newInteractions.liked = !currentlyLiked;
-        newStats.likes += currentlyLiked ? -1 : 1;
+      if (type === 'like' && user) {
+        const hasLiked = newLikedBy.includes(user.uid);
+        if (hasLiked) {
+          newLikedBy = newLikedBy.filter(uid => uid !== user.uid);
+          newInteractions.liked = false;
+        } else {
+          newLikedBy.push(user.uid);
+          newInteractions.liked = true;
+        }
+        newStats.likes = newLikedBy.length;
       } else if (type === 'repost') {
         const currentlyReposted = newInteractions.reposted;
         newInteractions.reposted = !currentlyReposted;
@@ -267,18 +277,26 @@ export function Feed({
             newRepostedUsers = newRepostedUsers.filter(u => u.username !== username);
           }
         }
-      } else if (type === 'bookmark') {
-        const currentlyBookmarked = newInteractions.bookmarked;
-        newInteractions.bookmarked = !currentlyBookmarked;
-        newStats.bookmarks += currentlyBookmarked ? -1 : 1;
+      } else if (type === 'bookmark' && user) {
+        const hasBookmarked = newBookmarkedBy.includes(user.uid);
+        if (hasBookmarked) {
+          newBookmarkedBy = newBookmarkedBy.filter(uid => uid !== user.uid);
+          newInteractions.bookmarked = false;
+        } else {
+          newBookmarkedBy.push(user.uid);
+          newInteractions.bookmarked = true;
+        }
+        newStats.bookmarks = newBookmarkedBy.length;
       }
 
-      const updatedPost: Post = {
+      updatedPost = {
         ...targetPost,
         stats: newStats,
         userInteractions: newInteractions,
         repostedBy: newRepostedBy,
-        repostedUsers: newRepostedUsers
+        repostedUsers: newRepostedUsers,
+        likedBy: newLikedBy,
+        bookmarkedBy: newBookmarkedBy
       };
       savePostToFirestore(updatedPost);
     }
@@ -291,11 +309,19 @@ export function Feed({
         const newInteractions = { ...(post.userInteractions || {}) };
         let newRepostedBy = [...(post.repostedBy || [])];
         let newRepostedUsers = [...(post.repostedUsers || [])];
+        let newLikedBy = [...(post.likedBy || [])];
+        let newBookmarkedBy = [...(post.bookmarkedBy || [])];
 
-        if (type === 'like') {
-          const currentlyLiked = newInteractions.liked;
-          newInteractions.liked = !currentlyLiked;
-          newStats.likes += currentlyLiked ? -1 : 1;
+        if (type === 'like' && user) {
+          const hasLiked = newLikedBy.includes(user.uid);
+          if (hasLiked) {
+            newLikedBy = newLikedBy.filter(uid => uid !== user.uid);
+            newInteractions.liked = false;
+          } else {
+            newLikedBy.push(user.uid);
+            newInteractions.liked = true;
+          }
+          newStats.likes = newLikedBy.length;
         } else if (type === 'repost') {
           const currentlyReposted = newInteractions.reposted;
           newInteractions.reposted = !currentlyReposted;
@@ -320,10 +346,16 @@ export function Feed({
               newRepostedUsers = newRepostedUsers.filter(u => u.username !== username);
             }
           }
-        } else if (type === 'bookmark') {
-          const currentlyBookmarked = newInteractions.bookmarked;
-          newInteractions.bookmarked = !currentlyBookmarked;
-          newStats.bookmarks += currentlyBookmarked ? -1 : 1;
+        } else if (type === 'bookmark' && user) {
+          const hasBookmarked = newBookmarkedBy.includes(user.uid);
+          if (hasBookmarked) {
+            newBookmarkedBy = newBookmarkedBy.filter(uid => uid !== user.uid);
+            newInteractions.bookmarked = false;
+          } else {
+            newBookmarkedBy.push(user.uid);
+            newInteractions.bookmarked = true;
+          }
+          newStats.bookmarks = newBookmarkedBy.length;
         }
 
         return {
@@ -331,7 +363,9 @@ export function Feed({
           stats: newStats,
           userInteractions: newInteractions,
           repostedBy: newRepostedBy,
-          repostedUsers: newRepostedUsers
+          repostedUsers: newRepostedUsers,
+          likedBy: newLikedBy,
+          bookmarkedBy: newBookmarkedBy
         };
       }));
     }

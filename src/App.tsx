@@ -11,6 +11,7 @@ import { ExternalLinkModal } from './components/ExternalLinkModal';
 import { AdminPasswordModal } from './components/AdminPasswordModal';
 import { EditProfileModal } from './components/EditProfileModal';
 import { UserProfileModal } from './components/UserProfileModal';
+import { PostItem } from './components/PostItem';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post, User } from './types';
@@ -22,6 +23,20 @@ import { INITIAL_POSTS } from './data';
 // Helper function to extract user from URL search params, hash, or sessionStorage
 function getInitialUser(): SessionUser | null {
   try {
+    if (typeof window !== 'undefined') {
+      let urlParams: URLSearchParams | null = null;
+      if (window.location.search) {
+        urlParams = new URLSearchParams(window.location.search);
+      } else if (window.location.hash && window.location.hash.includes('?')) {
+        urlParams = new URLSearchParams(window.location.hash.split('?')[1]);
+      }
+      if (urlParams) {
+        const pId = urlParams.get('post') || urlParams.get('postId') || urlParams.get('post_id');
+        if (pId) {
+          sessionStorage.setItem('mtfeed_shared_post_id', pId);
+        }
+      }
+    }
     let params: URLSearchParams | null = null;
     let isFromValidSource = false;
     
@@ -136,6 +151,26 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showWelcomeAlert, setShowWelcomeAlert] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(getInitialUser);
+  const [sharedPostId, setSharedPostId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return sessionStorage.getItem('mtfeed_shared_post_id');
+  });
+
+  const handleClearSharedPost = () => {
+    setSharedPostId(null);
+    try {
+      sessionStorage.removeItem('mtfeed_shared_post_id');
+      if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('post');
+        url.searchParams.delete('postId');
+        url.searchParams.delete('post_id');
+        window.history.replaceState({}, document.title, url.pathname + url.search);
+      }
+    } catch (e) {
+      console.error('Error clearing shared post state:', e);
+    }
+  };
 
   // Real Registered Users state
   const [registeredUsers, setRegisteredUsers] = useState<SessionUser[]>(() => {
@@ -287,6 +322,19 @@ export default function App() {
     }
     return [];
   });
+
+  const [hasLoadedInitially, setHasLoadedInitially] = useState(false);
+
+  useEffect(() => {
+    if (posts && posts.length > 0) {
+      setHasLoadedInitially(true);
+    } else {
+      const timer = setTimeout(() => {
+        setHasLoadedInitially(true);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [posts]);
 
   // Always sync logged in user to Firestore and local registry
   useEffect(() => {
@@ -622,11 +670,19 @@ export default function App() {
       const newInteractions = { ...(targetPost.userInteractions || {}) };
       let newRepostedBy = [...(targetPost.repostedBy || [])];
       let newRepostedUsers = [...(targetPost.repostedUsers || [])];
+      let newLikedBy = [...(targetPost.likedBy || [])];
+      let newBookmarkedBy = [...(targetPost.bookmarkedBy || [])];
 
-      if (type === 'like') {
-        const currentlyLiked = newInteractions.liked;
-        newInteractions.liked = !currentlyLiked;
-        newStats.likes += currentlyLiked ? -1 : 1;
+      if (type === 'like' && user) {
+        const hasLiked = newLikedBy.includes(user.uid);
+        if (hasLiked) {
+          newLikedBy = newLikedBy.filter(uid => uid !== user.uid);
+          newInteractions.liked = false;
+        } else {
+          newLikedBy.push(user.uid);
+          newInteractions.liked = true;
+        }
+        newStats.likes = newLikedBy.length;
       } else if (type === 'repost') {
         const currentlyReposted = newInteractions.reposted;
         newInteractions.reposted = !currentlyReposted;
@@ -651,10 +707,16 @@ export default function App() {
             newRepostedUsers = newRepostedUsers.filter(u => u.username !== username);
           }
         }
-      } else if (type === 'bookmark') {
-        const currentlyBookmarked = newInteractions.bookmarked;
-        newInteractions.bookmarked = !currentlyBookmarked;
-        newStats.bookmarks += currentlyBookmarked ? -1 : 1;
+      } else if (type === 'bookmark' && user) {
+        const hasBookmarked = newBookmarkedBy.includes(user.uid);
+        if (hasBookmarked) {
+          newBookmarkedBy = newBookmarkedBy.filter(uid => uid !== user.uid);
+          newInteractions.bookmarked = false;
+        } else {
+          newBookmarkedBy.push(user.uid);
+          newInteractions.bookmarked = true;
+        }
+        newStats.bookmarks = newBookmarkedBy.length;
       }
 
       const updatedPost: Post = {
@@ -662,7 +724,9 @@ export default function App() {
         stats: newStats,
         userInteractions: newInteractions,
         repostedBy: newRepostedBy,
-        repostedUsers: newRepostedUsers
+        repostedUsers: newRepostedUsers,
+        likedBy: newLikedBy,
+        bookmarkedBy: newBookmarkedBy
       };
 
       setPosts(prev => prev.map(p => p.id === postId ? updatedPost : p));
@@ -777,6 +841,24 @@ export default function App() {
 
   const unreadNotificationsCount = relevantNotifications.filter(n => !n.read).length;
 
+  const mappedPosts = React.useMemo(() => {
+    return posts.map(post => {
+      const isLiked = user ? (post.likedBy || []).includes(user.uid) : false;
+      const isBookmarked = user ? (post.bookmarkedBy || []).includes(user.uid) : false;
+      const isReposted = user ? (post.repostedBy || []).some((username: string) => username.toLowerCase() === user.username.toLowerCase()) : false;
+      
+      return {
+        ...post,
+        userInteractions: {
+          ...post.userInteractions,
+          liked: isLiked,
+          bookmarked: isBookmarked,
+          reposted: isReposted
+        }
+      };
+    });
+  }, [posts, user]);
+
   return (
     <div className="min-h-screen bg-white">
       {/* Banner if no session found */}
@@ -833,111 +915,194 @@ export default function App() {
         onExternalLinkClick={handleOpenExternalUrl}
       />
       
-      <main className="max-w-7xl mx-auto flex justify-center lg:justify-between px-0 sm:px-4 lg:px-8">
-        <SidebarLeft 
-          activeCategory={activeCategory} 
-          setActiveCategory={(cat) => {
-            setActiveCategory(cat);
-            setSelectedTag(null);
-          }}
-          unreadCount={unreadNotificationsCount}
-          onOpenNotifications={() => setIsNotificationsModalOpen(true)}
-          onEditProfileClick={() => user ? setIsEditProfileOpen(true) : window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')}
-          onViewProfile={handleViewProfile}
-          onLogoutClick={handleLogout}
-          currentUser={user}
-        />
-        
-        <Feed 
-          posts={posts}
-          setPosts={setPosts}
-          activeCategory={activeCategory} 
-          user={user} 
-          onLoginClick={() => window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')} 
-          isAdminBoardOpen={isAdminBoardOpen}
-          onCloseAdminBoard={() => setIsAdminBoardOpen(false)}
-          externalSharedText={externalSharedText}
-          onClearExternalSharedText={() => setExternalSharedText(null)}
-          selectedTag={selectedTag}
-          onSelectTag={setSelectedTag}
-          searchQuery={searchQuery}
-          onClearSearch={() => setSearchQuery('')}
-          registeredUsers={registeredUsers}
-          onMention={handleMentionNotification}
-          onExternalLinkClick={handleOpenExternalUrl}
-          onReportPost={handleReportPost}
-          onProfileClick={handleViewProfile}
-        />
-        
-        <SidebarRight 
-          posts={posts}
-          currentUser={user}
-          onlineUsers={registeredUsers}
-          selectedTag={selectedTag}
-          onSelectTag={setSelectedTag}
-          onOpenOnlineModal={() => setIsOnlineModalOpen(true)}
-        />
-      </main>
+      {sharedPostId ? (
+        <div className="min-h-screen bg-gray-50 pb-20">
+          <div className="bg-gradient-to-r from-red-50 to-orange-50 border-b border-red-100 px-4 py-4 sticky top-16 z-10 shadow-sm">
+            <div className="max-w-2xl mx-auto flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center space-x-2">
+                <span className="text-xl">📌</span>
+                <div>
+                  <h2 className="text-sm font-bold text-gray-900 animate-pulse">โพสต์ที่เชื่อมโยงมา (Shared Post)</h2>
+                  <p className="text-xs text-gray-500">คุณกำลังดูโพสต์นี้ในโหมดอ่านอย่างเดียว</p>
+                </div>
+              </div>
+              <button
+                onClick={handleClearSharedPost}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-full text-xs font-bold transition-colors shadow-sm flex items-center space-x-1"
+              >
+                <span>🏠 เข้าสู่หน้าหลัก MT Feed</span>
+              </button>
+            </div>
+          </div>
 
-      {/* Mobile Bottom Navigation */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50">
-        <div className="flex justify-around items-center h-14">
-          <button 
-            onClick={() => {
-              setActiveCategory('all');
-              setSelectedTag(null);
-              setSearchQuery('');
-            }}
-            className="p-2 flex flex-col items-center text-red-600" 
-            title="หน้าฟีด"
-          >
-            <MessageSquare className="w-6 h-6" />
-          </button>
-          <a 
-            href="https://mtexam-passalldiwa.ai.studio/" 
-            onClick={(e) => {
-              e.preventDefault();
-              handleOpenExternalUrl('https://mtexam-passalldiwa.ai.studio/');
-            }}
-            className="p-2 text-gray-700 hover:text-red-600 transition-colors flex flex-col items-center"
-            title="คลังข้อสอบ"
-          >
-            <BookA className="w-6 h-6" />
-          </a>
-          <button 
-            onClick={() => setIsNotificationsModalOpen(true)}
-            className="p-2 text-gray-500 hover:text-red-600 transition-colors flex flex-col items-center relative"
-            title="การแจ้งเตือน"
-          >
-            <span className="relative">
-              {unreadNotificationsCount > 0 && (
-                <span className="min-w-[16px] h-4 px-1 bg-red-600 text-white rounded-full absolute -top-1 -right-2 text-[10px] font-bold flex items-center justify-center">
-                  {unreadNotificationsCount}
-                </span>
-              )}
-              <Bell className="w-6 h-6" />
-            </span>
-          </button>
-          <button 
-            onClick={() => user ? handleViewProfile(user) : window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')} 
-            className="p-2 text-gray-500 hover:text-gray-900 transition-colors flex flex-col items-center"
-            title={user ? `@${user.username} (ดูโปรไฟล์และโพสต์)` : "เข้าสู่ระบบ"}
-          >
-            {user?.avatar ? (
-              <img 
-                src={user.avatar} 
-                alt="Profile" 
-                className="w-6 h-6 rounded-full object-cover ring-2 ring-red-500" 
-              />
-            ) : (
-              <UserIcon className={`w-6 h-6 ${user ? 'text-red-600' : ''}`} />
-            )}
-          </button>
+          <div className="max-w-2xl mx-auto px-4 py-6">
+            {!hasLoadedInitially && posts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-gray-200 shadow-sm">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-red-600 mb-4"></div>
+                <p className="text-sm text-gray-500 font-medium">กำลังโหลดโพสต์ที่แชร์มา...</p>
+              </div>
+            ) : (() => {
+              const sharedPost = mappedPosts.find(p => p.id === sharedPostId);
+              if (!sharedPost) {
+                return (
+                  <div className="text-center py-20 bg-white rounded-2xl border border-gray-200 p-8 shadow-sm">
+                    <span className="text-4xl">🔍</span>
+                    <h3 className="text-lg font-bold text-gray-900 mt-4 mb-2">ไม่พบโพสต์ที่คุณตามหา</h3>
+                    <p className="text-sm text-gray-500 mb-6">โพสต์นี้อาจจะไม่มีอยู่จริง หรือถูกลบโดยผู้เขียน/ผู้ดูแลระบบไปแล้ว</p>
+                    <button
+                      onClick={handleClearSharedPost}
+                      className="px-6 py-2.5 bg-red-600 text-white rounded-full text-sm font-bold hover:bg-red-700 transition-colors shadow"
+                    >
+                      เข้าสู่หน้าฟีดหลัก MT Feed
+                    </button>
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-6">
+                  <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+                    <PostItem
+                      post={sharedPost}
+                      user={user}
+                      onInteraction={handleInteraction}
+                      onVote={handleVote}
+                      onComment={handleComment}
+                      onDelete={handleDeletePost}
+                      onReport={handleReportPost}
+                      onProfileClick={handleViewProfile}
+                      onSelectTag={(tag) => {
+                        setSelectedTag(tag);
+                        handleClearSharedPost();
+                      }}
+                      onExternalLinkClick={handleOpenExternalUrl}
+                      readOnly={true}
+                    />
+                  </div>
+
+                  <div className="text-center bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
+                    <h3 className="text-base font-bold text-gray-900 mb-2">สนใจอ่านเรื่องราวอื่นๆ เพิ่มเติมหรือไม่?</h3>
+                    <p className="text-sm text-gray-500 mb-4 font-normal">เข้าสู่ระบบผ่านเว็บไซต์หลัก เพื่อร่วมพูดคุย แสดงความคิดเห็น โหวตโพล และติดตามฟีดข้อมูลแบบเรียลไทม์</p>
+                    <button
+                      onClick={handleClearSharedPost}
+                      className="inline-flex items-center space-x-1 px-6 py-2.5 bg-gray-950 text-white rounded-full text-sm font-bold hover:bg-gray-800 transition-all shadow"
+                    >
+                      <span>สำรวจหน้าฟีดหลัก MT Feed ➔</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
         </div>
-      </div>
-      
-      {/* Padding for mobile bottom nav */}
-      <div className="h-14 md:hidden"></div>
+      ) : (
+        <>
+          <main className="max-w-7xl mx-auto flex justify-center lg:justify-between px-0 sm:px-4 lg:px-8">
+            <SidebarLeft 
+              activeCategory={activeCategory} 
+              setActiveCategory={(cat) => {
+                setActiveCategory(cat);
+                setSelectedTag(null);
+              }}
+              unreadCount={unreadNotificationsCount}
+              onOpenNotifications={() => setIsNotificationsModalOpen(true)}
+              onEditProfileClick={() => user ? setIsEditProfileOpen(true) : window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')}
+              onViewProfile={handleViewProfile}
+              onLogoutClick={handleLogout}
+              currentUser={user}
+            />
+            
+            <Feed 
+              posts={mappedPosts}
+              setPosts={setPosts}
+              activeCategory={activeCategory} 
+              user={user} 
+              onLoginClick={() => window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')} 
+              isAdminBoardOpen={isAdminBoardOpen}
+              onCloseAdminBoard={() => setIsAdminBoardOpen(false)}
+              externalSharedText={externalSharedText}
+              onClearExternalSharedText={() => setExternalSharedText(null)}
+              selectedTag={selectedTag}
+              onSelectTag={setSelectedTag}
+              searchQuery={searchQuery}
+              onClearSearch={() => setSearchQuery('')}
+              registeredUsers={registeredUsers}
+              onMention={handleMentionNotification}
+              onExternalLinkClick={handleOpenExternalUrl}
+              onReportPost={handleReportPost}
+              onProfileClick={handleViewProfile}
+            />
+            
+            <SidebarRight 
+              posts={mappedPosts}
+              currentUser={user}
+              onlineUsers={registeredUsers}
+              selectedTag={selectedTag}
+              onSelectTag={setSelectedTag}
+              onOpenOnlineModal={() => setIsOnlineModalOpen(true)}
+            />
+          </main>
+
+          {/* Mobile Bottom Navigation */}
+          <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50">
+            <div className="flex justify-around items-center h-14">
+              <button 
+                onClick={() => {
+                  setActiveCategory('all');
+                  setSelectedTag(null);
+                  setSearchQuery('');
+                }}
+                className="p-2 flex flex-col items-center text-red-600" 
+                title="หน้าฟีด"
+              >
+                <MessageSquare className="w-6 h-6" />
+              </button>
+              <a 
+                href="https://mtexam-passalldiwa.ai.studio/" 
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleOpenExternalUrl('https://mtexam-passalldiwa.ai.studio/');
+                }}
+                className="p-2 text-gray-700 hover:text-red-600 transition-colors flex flex-col items-center"
+                title="คลังข้อสอบ"
+              >
+                <BookA className="w-6 h-6" />
+              </a>
+              <button 
+                onClick={() => setIsNotificationsModalOpen(true)}
+                className="p-2 text-gray-500 hover:text-red-600 transition-colors flex flex-col items-center relative"
+                title="การแจ้งเตือน"
+              >
+                <span className="relative">
+                  {unreadNotificationsCount > 0 && (
+                    <span className="min-w-[16px] h-4 px-1 bg-red-600 text-white rounded-full absolute -top-1 -right-2 text-[10px] font-bold flex items-center justify-center">
+                      {unreadNotificationsCount}
+                    </span>
+                  )}
+                  <Bell className="w-6 h-6" />
+                </span>
+              </button>
+              <button 
+                onClick={() => user ? handleViewProfile(user) : window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')} 
+                className="p-2 text-gray-500 hover:text-gray-900 transition-colors flex flex-col items-center"
+                title={user ? `@${user.username} (ดูโปรไฟล์และโพสต์)` : "เข้าสู่ระบบ"}
+              >
+                {user?.avatar ? (
+                  <img 
+                    src={user.avatar} 
+                    alt="Profile" 
+                    className="w-6 h-6 rounded-full object-cover ring-2 ring-red-500" 
+                  />
+                ) : (
+                  <UserIcon className={`w-6 h-6 ${user ? 'text-red-600' : ''}`} />
+                )}
+              </button>
+            </div>
+          </div>
+          
+          {/* Padding for mobile bottom nav */}
+          <div className="h-14 md:hidden"></div>
+        </>
+      )}
 
       {/* External Link Safety Warning Modal */}
       <ExternalLinkModal 
@@ -968,7 +1133,7 @@ export default function App() {
           onClose={() => setViewingProfileUser(null)}
           targetUser={viewingProfileUser}
           currentUser={user}
-          allPosts={posts}
+          allPosts={mappedPosts}
           onInteraction={handleInteraction}
           onVote={handleVote}
           onComment={handleComment}
@@ -1040,7 +1205,7 @@ export default function App() {
       <AdminBoardModal 
         isOpen={isAdminBoardOpen} 
         onClose={() => setIsAdminBoardOpen(false)} 
-        posts={posts} 
+        posts={mappedPosts} 
         onDeletePost={handleDeletePost}
         registeredUsers={registeredUsers}
         onDeleteUser={handleDeleteUser}

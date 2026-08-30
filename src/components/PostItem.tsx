@@ -14,7 +14,8 @@ export function PostItem({
   user,
   onSelectTag,
   onExternalLinkClick,
-  onProfileClick
+  onProfileClick,
+  readOnly = false
 }: { 
   post: Post;
   onInteraction: (postId: string, type: 'reply' | 'repost' | 'like' | 'bookmark') => void;
@@ -26,6 +27,7 @@ export function PostItem({
   onSelectTag?: (tag: string) => void;
   onExternalLinkClick?: (url: string) => void;
   onProfileClick?: (user: any) => void;
+  readOnly?: boolean;
 }) {
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
@@ -72,11 +74,20 @@ export function PostItem({
 
   const tags = Array.isArray(post?.tags) ? post.tags : [];
 
+  const handleReadOnlyAction = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    alert('คุณกำลังเข้าชมโพสต์นี้ในโหมดแชร์ (อ่านอย่างเดียว) ไม่สามารถร่วมแสดงความเห็น กดใจ หรือโต้ตอบได้ครับ');
+  };
+
   const handleShare = async () => {
+    const shareUrl = `https://mt-feed.vercel.app/?post=${post.id}`;
     const shareData = {
       title: 'MT Feed - ' + authorName,
       text: post?.content || '',
-      url: 'https://mt-feed.vercel.app',
+      url: shareUrl,
     };
     
     if (navigator.share) {
@@ -87,14 +98,14 @@ export function PostItem({
       }
     } else {
       navigator.clipboard.writeText(`${shareData.title}\n\n${shareData.text}\n\n${shareData.url}`);
-      alert('คัดลอกลิงก์โพสต์เรียบร้อยแล้ว');
+      alert('คัดลอกลิงก์โพสต์เชื่อมโยงเรียบร้อยแล้ว! (คุณสามารถส่งลิงก์นี้ให้ผู้อื่นดูโพสต์นี้ได้โดยตรง)');
     }
   };
 
   const handleReplyClick = () => {
     setShowComments(!showComments);
     // Also trigger interaction if it's the first time
-    if (!showComments) {
+    if (!showComments && !readOnly) {
       onInteraction(post.id, 'reply');
     }
   };
@@ -294,9 +305,15 @@ export function PostItem({
                     <div 
                       key={option.id} 
                       className="relative"
-                      onClick={() => !votedOptionId && onVote(post.id, option.id)}
+                      onClick={() => {
+                        if (readOnly) {
+                          alert('คุณกำลังเข้าชมโพสต์นี้ในโหมดแชร์ (อ่านอย่างเดียว) ไม่สามารถร่วมโหวตได้ครับ');
+                          return;
+                        }
+                        if (!votedOptionId) onVote(post.id, option.id);
+                      }}
                     >
-                      <div className={`overflow-hidden h-8 text-xs flex rounded-md bg-gray-100 relative ${!votedOptionId ? 'cursor-pointer hover:bg-gray-200' : ''} transition-colors`}>
+                      <div className={`overflow-hidden h-8 text-xs flex rounded-md bg-gray-100 relative ${(!votedOptionId && !readOnly) ? 'cursor-pointer hover:bg-gray-200' : ''} transition-colors`}>
                         <div
                           style={{ width: `${percentage}%` }}
                           className={`shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center absolute inset-0 h-full rounded-md z-0 ${isVoted ? 'bg-red-200' : 'bg-gray-200'}`}
@@ -346,7 +363,7 @@ export function PostItem({
               <span className={`text-xs transition-colors ${showComments ? '' : 'group-hover:text-gray-900'}`}>{stats.replies}</span>
             </button>
             <button 
-              onClick={() => onInteraction(post.id, 'repost')}
+              onClick={(e) => readOnly ? handleReadOnlyAction(e) : onInteraction(post.id, 'repost')}
               className={`flex items-center space-x-2 group ${isReposted ? 'text-green-600' : ''}`}
             >
               <div className={`p-2 rounded-full transition-colors ${isReposted ? 'bg-green-50' : 'group-hover:bg-green-50 group-hover:text-green-600'}`}>
@@ -355,7 +372,7 @@ export function PostItem({
               <span className={`text-xs transition-colors ${isReposted ? '' : 'group-hover:text-green-600'}`}>{stats.reposts}</span>
             </button>
             <button 
-              onClick={() => onInteraction(post.id, 'like')}
+              onClick={(e) => readOnly ? handleReadOnlyAction(e) : onInteraction(post.id, 'like')}
               className={`flex items-center space-x-2 group ${isLiked ? 'text-red-600' : ''}`}
             >
               <div className={`p-2 rounded-full transition-colors ${isLiked ? 'bg-red-50' : 'group-hover:bg-red-50 group-hover:text-red-600'}`}>
@@ -364,7 +381,7 @@ export function PostItem({
               <span className={`text-xs transition-colors ${isLiked ? '' : 'group-hover:text-red-600'}`}>{stats.likes}</span>
             </button>
             <button 
-              onClick={() => onInteraction(post.id, 'bookmark')}
+              onClick={(e) => readOnly ? handleReadOnlyAction(e) : onInteraction(post.id, 'bookmark')}
               className={`flex items-center space-x-2 group ${isBookmarked ? 'text-gray-900' : ''}`}
             >
               <div className={`p-2 rounded-full transition-colors ${isBookmarked ? 'bg-gray-100' : 'group-hover:bg-gray-100 group-hover:text-gray-900'}`}>
@@ -454,7 +471,13 @@ export function PostItem({
                 </div>
               )}
               
-              {user ? (
+              {readOnly ? (
+                <div className="text-center py-3 bg-red-50 rounded-xl border border-red-100">
+                  <p className="text-sm text-red-600 font-semibold">
+                    คุณกำลังเข้าชมในโหมดแชร์ (อ่านอย่างเดียว) ไม่สามารถพิมพ์แสดงความคิดเห็นได้ครับ
+                  </p>
+                </div>
+              ) : user ? (
                 <form onSubmit={submitComment} className="flex items-start space-x-3 mt-4">
                   <div className="flex-shrink-0">
                     <img className="h-8 w-8 rounded-full bg-gray-100 border border-gray-200" src={user.avatar || (user.isAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.username || 'user')}&backgroundColor=cccccc`)} alt={user.username || 'user'} />

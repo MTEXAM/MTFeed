@@ -84,6 +84,9 @@ export interface Post {
     votedOptionId?: string;
   };
   repostedBy?: string[];
+  likedBy?: string[];
+  bookmarkedBy?: string[];
+  votedBy?: { uid: string; optionId: string }[];
   repostedUsers?: {
     username: string;
     name?: string;

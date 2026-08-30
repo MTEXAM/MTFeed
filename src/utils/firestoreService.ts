@@ -277,15 +277,45 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
           const mergedComments = Array.from(mergedCommentsMap.values());
           mergedComments.sort((a, b) => ((a as any).createdAtMs || 0) - ((b as any).createdAtMs || 0));
 
+          // Merge active interaction lists (taking the set union of users who interacted)
+          const mergedLikedBy = Array.from(new Set([
+            ...(cloudPost.likedBy || []),
+            ...(p.likedBy || [])
+          ]));
+          const mergedBookmarkedBy = Array.from(new Set([
+            ...(cloudPost.bookmarkedBy || []),
+            ...(p.bookmarkedBy || [])
+          ]));
+          const mergedRepostedBy = Array.from(new Set([
+            ...(cloudPost.repostedBy || []),
+            ...(p.repostedBy || [])
+          ]));
+
+          // If a user unlikes, the ID is removed from likedBy, so we want the array length to be authoritative.
+          // If the arrays are empty (e.g. for legacy posts without likedBy field), we fall back to cloudPost stats.
+          const finalLikes = (cloudPost.likedBy && cloudPost.likedBy.length > 0) || (p.likedBy && p.likedBy.length > 0)
+            ? mergedLikedBy.length 
+            : (cloudPost.stats?.likes || 0);
+          const finalBookmarks = (cloudPost.bookmarkedBy && cloudPost.bookmarkedBy.length > 0) || (p.bookmarkedBy && p.bookmarkedBy.length > 0)
+            ? mergedBookmarkedBy.length 
+            : (cloudPost.stats?.bookmarks || 0);
+          const finalReposts = (cloudPost.repostedBy && cloudPost.repostedBy.length > 0) || (p.repostedBy && p.repostedBy.length > 0)
+            ? mergedRepostedBy.length 
+            : (cloudPost.stats?.reposts || 0);
+
           map.set(p.id, {
             ...cloudPost,
             comments: mergedComments,
+            likedBy: mergedLikedBy,
+            bookmarkedBy: mergedBookmarkedBy,
+            repostedBy: mergedRepostedBy,
+            votedBy: cloudPost.votedBy || p.votedBy || [],
             stats: {
               ...cloudPost.stats,
-              likes: Math.max(cloudPost.stats?.likes || 0, p.stats?.likes || 0),
+              likes: finalLikes,
               replies: Math.max(cloudPost.stats?.replies || 0, p.stats?.replies || 0, mergedComments.length),
-              reposts: Math.max(cloudPost.stats?.reposts || 0, p.stats?.reposts || 0),
-              bookmarks: Math.max(cloudPost.stats?.bookmarks || 0, p.stats?.bookmarks || 0)
+              reposts: finalReposts,
+              bookmarks: finalBookmarks
             }
           });
         }
