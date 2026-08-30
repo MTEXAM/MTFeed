@@ -82,9 +82,9 @@ function getInitialUser(): SessionUser | null {
     }
 
     if (params) {
-      // ลบพารามิเตอร์ออกทุกกรณีเมื่อพบ เพื่อความสะอาดของ URL
+      // Forcefully strip parameters immediately using location.replace if params detected
       try {
-        if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
+        if (typeof window !== 'undefined') {
           const cleanUrl = window.location.pathname + (window.location.hash ? window.location.hash.split('?')[0] : '');
           window.history.replaceState({}, document.title, cleanUrl);
         }
@@ -155,6 +155,7 @@ export default function App() {
     if (typeof window === 'undefined') return null;
     return sessionStorage.getItem('mtfeed_shared_post_id');
   });
+
 
   const handleClearSharedPost = () => {
     setSharedPostId(null);
