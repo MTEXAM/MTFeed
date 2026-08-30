@@ -403,10 +403,8 @@ export function Feed({
       result = result.filter(post => {
         if (!post) return false;
         const contentMatch = post.content?.toLowerCase().includes(q);
-        const nameMatch = post.author?.name?.toLowerCase().includes(q);
-        const usernameMatch = post.author?.username?.toLowerCase().includes(q);
         const tagsMatch = Array.isArray(post.tags) && post.tags.some(t => (t || '').toLowerCase().includes(q));
-        return contentMatch || nameMatch || usernameMatch || tagsMatch;
+        return contentMatch || tagsMatch;
       });
     }
 
