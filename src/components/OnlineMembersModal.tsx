@@ -302,11 +302,12 @@ export function OnlineMembersModal({
                         )}
                       </div>
                       <div className="flex items-center space-x-2 mt-0.5 flex-wrap gap-y-0.5 text-xs text-gray-500">
-                        <span className="truncate">@{member.username}</span>
+                        {!(member.isAdmin || member.badge === '👑 Admin' || badgeText === '👑 Admin') && (
+                          <span className="truncate">@{member.username}</span>
+                        )}
                         <span className="text-[10px] font-mono bg-gray-100 text-gray-600 px-1.5 py-0.2 rounded border border-gray-200">
                           UID: #{maskUid(member.uid, currentUser)}
                         </span>
-
                       </div>
                     </div>
                   </div>

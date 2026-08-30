@@ -408,8 +408,8 @@ export function UserProfileModal({
                 {searchQuery 
                   ? 'ลองใช้คำค้นหาอื่นดูสิ'
                   : activeTab === 'reposts' 
-                    ? `@${displayUsername} ยังไม่ได้รีโพสต์ข้อความใด` 
-                    : `@${displayUsername} ยังไม่ได้สร้างโพสต์ในส่วนนี้`}
+                    ? `${isTargetAdmin ? '👑 Admin' : `@${displayUsername}`} ยังไม่ได้รีโพสต์ข้อความใด` 
+                    : `${isTargetAdmin ? '👑 Admin' : `@${displayUsername}`} ยังไม่ได้สร้างโพสต์ในส่วนนี้`}
               </p>
             </div>
           ) : (
@@ -418,7 +418,7 @@ export function UserProfileModal({
                 {isRepost && (
                   <div className="flex items-center px-4 pt-3 text-xs text-gray-500 font-semibold bg-gray-50/60 border-b border-gray-100/60">
                     <Repeat2 className="w-3.5 h-3.5 mr-1.5 text-green-600" />
-                    <span>@{displayUsername} ได้รีโพสต์</span>
+                    <span>{isTargetAdmin ? '👑 Admin' : `@${displayUsername}`} ได้รีโพสต์</span>
                   </div>
                 )}
                 <PostItem

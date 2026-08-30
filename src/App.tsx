@@ -805,7 +805,7 @@ export default function App() {
           <div className="flex items-center space-x-2 max-w-5xl mx-auto flex-1">
             <ShieldCheck className="w-5 h-5 flex-shrink-0 text-yellow-300" />
             <span className="font-medium truncate">
-              เข้าสู่ระบบด้วยรหัสปลอดภัย 8 หลัก: <b>{user.name || user.username}</b> (@{user.username}) • 
+              เข้าสู่ระบบด้วยรหัสปลอดภัย 8 หลัก: <b>{user.name || user.username}</b>{!(user.isAdmin || user.badge === '👑 Admin') && ` (@${user.username})`} • 
               <span className="ml-1 font-mono bg-white/25 px-2 py-0.5 rounded text-xs">UID: #{maskUid(user.uid, user)}</span>
               {user.isAdmin && ' 👑 Admin'}
             </span>
