@@ -213,7 +213,7 @@ export function PostItem({
                             <button
                               onClick={() => onProfileClick?.(post.author)}
                               className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${style.bg} ${style.text} ${style.border} cursor-pointer hover:opacity-90 transition-opacity`}
-                              title={[post.author?.faculty, post.author?.university].filter(Boolean).join(' • ') || post.author?.badge}
+                              title={post.author.badge}
                             >
                               {post.author.badge}
                             </button>

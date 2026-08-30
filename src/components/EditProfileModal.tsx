@@ -18,10 +18,7 @@ export function EditProfileModal({
 
   const [name, setName] = useState(currentUser?.name || currentUser?.username || '');
   const [avatar, setAvatar] = useState(currentUser?.avatar || '');
-  const [userGroup, setUserGroup] = useState(currentUser?.userGroup || '🔬🎓 นศ.เทคนิคการแพทย์');
-  const [academicYear, setAcademicYear] = useState(currentUser?.academicYear || 'ปี 3');
-  const [faculty, setFaculty] = useState(currentUser?.faculty || 'คณะเทคนิคการแพทย์');
-  const [university, setUniversity] = useState(currentUser?.university || '');
+
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -30,10 +27,6 @@ export function EditProfileModal({
     if (currentUser) {
       setName(currentUser.name || currentUser.username || '');
       setAvatar(currentUser.avatar || '');
-      setUserGroup(currentUser.userGroup || '🔬🎓 นศ.เทคนิคการแพทย์');
-      setAcademicYear(currentUser.academicYear || 'ปี 3');
-      setFaculty(currentUser.faculty || 'คณะเทคนิคการแพทย์');
-      setUniversity(currentUser.university || '');
     }
   }, [currentUser, isOpen]);
 
@@ -110,22 +103,15 @@ export function EditProfileModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const updatedBadge = formatUserBadge({
-      isAdmin: currentUser.isAdmin,
-      userGroup,
-      academicYear,
-      username: currentUser.username,
-      uid: currentUser.uid
-    });
 
     onSaveProfile({
       name: name.trim() || currentUser.username,
       avatar: avatar.trim() || defaultAvatar,
-      userGroup,
-      academicYear: currentUser.isAdmin ? 'ปี 5+' : academicYear,
-      faculty: faculty.trim(),
-      university: university.trim(),
-      badge: updatedBadge
+      userGroup: '',
+      academicYear: '',
+      faculty: '',
+      university: '',
+      badge: ''
     });
 
     setSaveSuccess(true);
@@ -300,79 +286,9 @@ export function EditProfileModal({
               </div>
             </div>
 
-            {/* User Group & Year Selection */}
-            {!currentUser.isAdmin && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
-                    สถานะผู้ใช้งาน
-                  </label>
-                  <select
-                    value={userGroup}
-                    onChange={(e) => setUserGroup(e.target.value)}
-                    className="block w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 text-xs outline-none bg-white"
-                  >
-                    {USER_GROUPS.map((g) => (
-                      <option key={g} value={g}>{g}</option>
-                    ))}
-                  </select>
-                </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
-                    ชั้นปีการศึกษา
-                  </label>
-                  <select
-                    value={academicYear}
-                    onChange={(e) => setAcademicYear(e.target.value)}
-                    className="block w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 text-xs outline-none bg-white"
-                  >
-                    {ACADEMIC_YEARS.map((y) => (
-                      <option key={y} value={y}>{y}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            )}
 
-            {/* Faculty & University (Optional) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
-                  คณะ / สาขา (ไม่บังคับ)
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Building2 className="h-3.5 w-3.5 text-gray-400" />
-                  </div>
-                  <input 
-                    type="text" 
-                    value={faculty}
-                    onChange={(e) => setFaculty(e.target.value)}
-                    className="block w-full pl-9 pr-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 text-xs outline-none" 
-                    placeholder="เช่น คณะเทคนิคการแพทย์"
-                  />
-                </div>
-              </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
-                  มหาวิทยาลัย / สถาบัน (ไม่บังคับ)
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <School className="h-3.5 w-3.5 text-gray-400" />
-                  </div>
-                  <input 
-                    type="text" 
-                    value={university}
-                    onChange={(e) => setUniversity(e.target.value)}
-                    className="block w-full pl-9 pr-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 text-xs outline-none" 
-                    placeholder="เช่น จุฬาฯ, มหิดล, มช., มข."
-                  />
-                </div>
-              </div>
-            </div>
 
           </div>
 

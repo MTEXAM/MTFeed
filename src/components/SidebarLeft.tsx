@@ -23,7 +23,7 @@ export function SidebarLeft({
 }) {
   const badgeText = currentUser ? (currentUser.badge || formatUserBadge(currentUser)) : '';
   const badgeStyle = getBadgeStyle(badgeText);
-  const edu = currentUser ? [currentUser.faculty, currentUser.university].filter(Boolean).join(' • ') : '';
+
 
   return (
     <div className="hidden md:block w-64 flex-shrink-0 py-6 pr-6">
@@ -82,11 +82,8 @@ export function SidebarLeft({
               </div>
             )}
 
-            {edu && (
-              <p className="text-[10px] text-gray-500 mt-1 truncate" title={edu}>
-                🏛️ {edu}
-              </p>
-            )}
+
+
 
             <button
               onClick={() => onViewProfile ? onViewProfile(currentUser) : onEditProfileClick?.()}

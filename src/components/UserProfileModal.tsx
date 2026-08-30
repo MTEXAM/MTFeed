@@ -285,23 +285,7 @@ export function UserProfileModal({
               </span>
             </div>
 
-            {/* University & Faculty */}
-            {(targetUser.faculty || targetUser.university) && (
-              <div className="flex items-center space-x-3 text-xs text-gray-600 pt-1 flex-wrap gap-y-1">
-                {targetUser.faculty && (
-                  <span className="flex items-center">
-                    <Building2 className="w-3.5 h-3.5 mr-1 text-gray-400" />
-                    {targetUser.faculty}
-                  </span>
-                )}
-                {targetUser.university && (
-                  <span className="flex items-center">
-                    <School className="w-3.5 h-3.5 mr-1 text-gray-400" />
-                    {targetUser.university}
-                  </span>
-                )}
-              </div>
-            )}
+
           </div>
 
           {/* Stats Bar */}

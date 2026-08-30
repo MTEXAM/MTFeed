@@ -103,14 +103,19 @@ export function saveRegisteredUser(user: SessionUser): void {
     const registry = getRegisteredUsers();
     const key = user.uid || user.username || user.id;
     if (key) {
-      registry[key] = user;
+      const existing = registry[key];
+      registry[key] = {
+        ...existing,
+        ...user,
+        name: user.name || existing?.name || user.username
+      };
     }
     localStorage.setItem(REGISTRY_KEY, JSON.stringify(registry));
     if (mtFeedChannel) {
-      mtFeedChannel.postMessage({ type: 'USER_REGISTERED', user });
+      mtFeedChannel.postMessage({ type: 'USER_REGISTERED', user: registry[key] });
     }
     // Async save to Cloud Firestore
-    saveUserToFirestore(user);
+    saveUserToFirestore(registry[key]);
   } catch (e) {
     console.error('Failed to save account to registry', e);
   }
@@ -362,9 +367,9 @@ export function resolveUserAccount(params: {
     uid: finalUid
   });
 
-  const cleanDisplayName = params.displayName 
-    ? decodeURIComponent(params.displayName).trim() 
-    : (existingUser?.name || (isAdmin ? 'Admin Bank' : cleanUsername));
+  const cleanDisplayName = (existingUser?.name && existingUser.name !== cleanUsername)
+    ? existingUser.name
+    : (params.displayName ? decodeURIComponent(params.displayName).trim() : (existingUser?.name || (isAdmin ? 'Admin Bank' : cleanUsername)));
 
   const cleanAvatar = params.avatar 
     ? decodeURIComponent(params.avatar).trim() 

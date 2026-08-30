@@ -264,7 +264,7 @@ export function OnlineMembersModal({
               const isSelf = currentUser && (member.username.toLowerCase() === currentUser.username.toLowerCase() || member.uid === currentUser.uid);
               const badgeText = member.badge || formatUserBadge(member);
               const style = getBadgeStyle(badgeText);
-              const educationInfo = [member.faculty, member.university].filter(Boolean).join(' • ');
+
 
               return (
                 <div key={member.uid || member.username} className="py-3 first:pt-0 last:pb-0 flex items-center justify-between group hover:bg-gray-50/80 px-2 rounded-xl transition-colors">
@@ -306,11 +306,7 @@ export function OnlineMembersModal({
                         <span className="text-[10px] font-mono bg-gray-100 text-gray-600 px-1.5 py-0.2 rounded border border-gray-200">
                           UID: #{maskUid(member.uid, currentUser)}
                         </span>
-                        {educationInfo && (
-                          <span className="text-gray-400 text-[11px] truncate max-w-[200px]" title={educationInfo}>
-                            • {educationInfo}
-                          </span>
-                        )}
+
                       </div>
                     </div>
                   </div>

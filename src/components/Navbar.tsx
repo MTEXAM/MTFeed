@@ -165,11 +165,7 @@ export function Navbar({
                           </span>
                         </div>
                       )}
-                      {educationDetail && (
-                        <p className="text-[11px] text-gray-500 mt-1.5 truncate" title={educationDetail}>
-                          🏛️ {educationDetail}
-                        </p>
-                      )}
+
                     </div>
                     <div className="py-1">
                       <button 
