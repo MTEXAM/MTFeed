@@ -105,6 +105,13 @@ export function subscribeToUsers(onUsersUpdate: (users: SessionUser[]) => void) 
 // Save or Update user in Firestore
 export async function saveUserToFirestore(user: SessionUser): Promise<void> {
   if (!user || (!user.uid && !user.username)) return;
+  
+  // Layer 5: Schema Validation
+  if (!user.username || typeof user.username !== 'string') {
+    console.error('Invalid user data: missing or invalid username');
+    return;
+  }
+
   const docId = (user.uid || user.username).toString();
   try {
     const userData: any = { ...user };
@@ -113,14 +120,39 @@ export async function saveUserToFirestore(user: SessionUser): Promise<void> {
         delete userData[key];
       }
     });
+
     const userRef = doc(db, USERS_COLLECTION, docId);
+    
+    // Layer 6: Create Snapshot before update
+    const docSnap = await getDoc(userRef);
+    if (docSnap.exists()) {
+      const backupRef = doc(db, 'profile_backups', docId, 'snapshots', Date.now().toString());
+      await setDoc(backupRef, docSnap.data());
+    }
+
     await setDoc(userRef, {
       ...userData,
-      updatedAt: new Date().toISOString()
+      updatedAt: Date.now()
     }, { merge: true });
   } catch (e) {
     console.error('Error saving user to Firestore:', e);
   }
+}
+
+// Get user from Firestore
+export async function getUserFromFirestore(uidOrUsername: string): Promise<SessionUser | null> {
+  if (!uidOrUsername) return null;
+  try {
+    const docId = uidOrUsername.toString();
+    const userRef = doc(db, USERS_COLLECTION, docId);
+    const docSnap = await getDoc(userRef);
+    if (docSnap.exists()) {
+      return docSnap.data() as SessionUser;
+    }
+  } catch (e) {
+    console.error('Error fetching user from Firestore:', e);
+  }
+  return null;
 }
 
 // Delete single user from Firestore

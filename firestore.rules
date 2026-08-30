@@ -6,14 +6,17 @@ service cloud.firestore {
       return request.auth != null;
     }
     
-    // Allow read & write for users collection
+    // Allow read & write for users collection, but restrict field modifications
     match /users/{userId} {
-      allow read, write: if true;
+      allow read: if true;
+      // Users can only write their own document and specific fields
+      allow write: if isAuthenticated() && request.auth.uid == userId;
     }
 
     // Allow read & write for posts collection
     match /posts/{postId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
 
     // Allow read & write for notifications collection

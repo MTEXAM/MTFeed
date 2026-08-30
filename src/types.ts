@@ -26,6 +26,7 @@ export interface SessionUser {
   university?: string;
   badge?: string;
   joinedAt?: string;
+  updatedAt?: number;
 }
 
 export interface AppNotification {

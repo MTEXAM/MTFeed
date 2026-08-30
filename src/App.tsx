@@ -16,7 +16,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post, User } from './types';
 import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid, formatUserBadge } from './utils/auth';
-import { subscribeToPosts, subscribeToUsers, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore, syncPostsToFirestore } from './utils/firestoreService';
+import { subscribeToPosts, subscribeToUsers, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore, syncPostsToFirestore, getUserFromFirestore } from './utils/firestoreService';
 import { formatRealTime } from './utils/timeUtils';
 import { INITIAL_POSTS } from './data';
 
@@ -37,6 +37,22 @@ function getInitialUser(): SessionUser | null {
         }
       }
     }
+    
+    // 1. ตรวจสอบใน Storage ก่อนเสมอ ถ้ามีให้ใช้ตัวนั้นเลย (ป้องกันการ overwrite ด้วย URL params เก่า)
+    if (typeof window !== 'undefined') {
+      const sessionData = sessionStorage.getItem('mtfeed_user');
+      if (sessionData) {
+        return JSON.parse(sessionData);
+      }
+      const localData = localStorage.getItem('mtfeed_user');
+      if (localData) {
+        const parsed = JSON.parse(localData);
+        sessionStorage.setItem('mtfeed_user', localData);
+        return parsed;
+      }
+    }
+
+    // 2. ถ้าไม่มีใน Storage ถึงค่อยพิจารณา URL params
     let params: URLSearchParams | null = null;
     let isFromValidSource = false;
     
@@ -105,7 +121,6 @@ function getInitialUser(): SessionUser | null {
 
           return autoUser;
         } else {
-          console.warn("Blocked auto-login attempt from unauthorized origin or direct URL entry.");
           try {
             if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
               const cleanUrl = window.location.pathname + (window.location.hash ? window.location.hash.split('?')[0] : '');
@@ -115,20 +130,6 @@ function getInitialUser(): SessionUser | null {
             console.error('Error clearing URL parameters:', e);
           }
         }
-      }
-    }
-
-    // 3. ถ้าไม่มีใน URL ให้อ่านจาก sessionStorage (หรือ localStorage fallback)
-    if (typeof window !== 'undefined') {
-      const sessionData = sessionStorage.getItem('mtfeed_user');
-      if (sessionData) {
-        return JSON.parse(sessionData);
-      }
-      const localData = localStorage.getItem('mtfeed_user');
-      if (localData) {
-        const parsed = JSON.parse(localData);
-        sessionStorage.setItem('mtfeed_user', localData);
-        return parsed;
       }
     }
   } catch (e) {
@@ -336,6 +337,27 @@ export default function App() {
     }
   }, [posts]);
 
+  // 3-Layer Protection: Hydrate user from Firestore
+  useEffect(() => {
+    async function hydrateUser() {
+      if (!user) return;
+      const remoteUser = await getUserFromFirestore(user.uid || user.username);
+      if (remoteUser) {
+        // Compare timestamps
+        const localUpdatedAt = user.updatedAt || 0;
+        const remoteUpdatedAt = remoteUser.updatedAt || 0;
+        
+        if (remoteUpdatedAt > localUpdatedAt) {
+          console.log('Hydrating user profile from Firestore (newer data found)');
+          setUser(remoteUser);
+          localStorage.setItem('mtfeed_user', JSON.stringify(remoteUser));
+          sessionStorage.setItem('mtfeed_user', JSON.stringify(remoteUser));
+        }
+      }
+    }
+    hydrateUser();
+  }, []);
+
   // Always sync logged in user to Firestore and local registry
   useEffect(() => {
     if (user) {
@@ -447,8 +469,19 @@ export default function App() {
     if (!user) return;
     const updatedUser: SessionUser = {
       ...user,
-      ...updatedData
+      ...updatedData,
+      updatedAt: Date.now()
     };
+    
+    // Layer 4: Log changes locally
+    try {
+      const history = JSON.parse(localStorage.getItem('mtfeed_profile_history') || '[]');
+      history.push({ timestamp: Date.now(), changes: updatedData });
+      localStorage.setItem('mtfeed_profile_history', JSON.stringify(history));
+    } catch (e) {
+      console.error('Error logging profile change:', e);
+    }
+
     setUser(updatedUser);
     saveRegisteredUser(updatedUser);
     saveUserToFirestore(updatedUser);
