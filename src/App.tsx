@@ -15,7 +15,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post, User } from './types';
 import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid, formatUserBadge } from './utils/auth';
-import { subscribeToPosts, subscribeToUsers, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore } from './utils/firestoreService';
+import { subscribeToPosts, subscribeToUsers, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore, syncPostsToFirestore } from './utils/firestoreService';
 import { formatRealTime } from './utils/timeUtils';
 import { INITIAL_POSTS } from './data';
 
@@ -356,7 +356,7 @@ export default function App() {
     // Update registeredUsers list in state
     setRegisteredUsers(getAllRegisteredUsersList());
 
-    // Also update existing posts & comments in memory so avatar/name changes reflect immediately
+    // Also update existing posts & comments in memory AND persist to localStorage and Firestore
     setPosts(prevPosts => {
       const updated = prevPosts.map(p => {
         const isAuthor = (
@@ -401,6 +401,13 @@ export default function App() {
         }
         return p;
       });
+
+      // Persist updated posts to localStorage and Firestore
+      try {
+        localStorage.setItem('mtfeed_posts', JSON.stringify(updated));
+      } catch (e) {}
+      syncPostsToFirestore(updated).catch(() => {});
+
       return updated;
     });
   };
