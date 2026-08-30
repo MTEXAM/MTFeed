@@ -23,112 +23,124 @@ import { INITIAL_POSTS } from './data';
 // Helper function to extract user from URL search params, hash, or sessionStorage
 function getInitialUser(): SessionUser | null {
   try {
-    if (typeof window !== 'undefined') {
-      let urlParams: URLSearchParams | null = null;
-      if (window.location.search) {
-        urlParams = new URLSearchParams(window.location.search);
-      } else if (window.location.hash && window.location.hash.includes('?')) {
-        urlParams = new URLSearchParams(window.location.hash.split('?')[1]);
-      }
-      if (urlParams) {
-        const pId = urlParams.get('post') || urlParams.get('postId') || urlParams.get('post_id');
-        if (pId) {
-          sessionStorage.setItem('mtfeed_shared_post_id', pId);
-        }
-      }
-    }
+    if (typeof window === 'undefined') return null;
+
+    // A. Parse parameters from HEAD-captured sessionStorage OR directly from current URL as backup
+    let paramsObj: Record<string, string> = {};
     
-    // 1. ตรวจสอบใน Storage ก่อนเสมอ ถ้ามีให้ใช้ตัวนั้นเลย (ป้องกันการ overwrite ด้วย URL params เก่า)
-    if (typeof window !== 'undefined') {
-      const sessionData = sessionStorage.getItem('mtfeed_user');
-      if (sessionData) {
-        return JSON.parse(sessionData);
-      }
-      const localData = localStorage.getItem('mtfeed_user');
-      if (localData) {
-        const parsed = JSON.parse(localData);
-        sessionStorage.setItem('mtfeed_user', localData);
-        return parsed;
+    // 1. Recover parameters saved instantly in index.html HEAD
+    const savedParamsStr = sessionStorage.getItem('mtfeed_pending_url_params');
+    if (savedParamsStr) {
+      try {
+        paramsObj = JSON.parse(savedParamsStr);
+        // Clear the consumed parameters so we do not process them again on reload
+        sessionStorage.removeItem('mtfeed_pending_url_params');
+      } catch (e) {
+        console.error('Error parsing stored pending url params:', e);
       }
     }
 
-    // 2. ถ้าไม่มีใน Storage ถึงค่อยพิจารณา URL params
+    // 2. Read from URL directly as a fallback
     let params: URLSearchParams | null = null;
-    let isFromValidSource = false;
-    
-    if (typeof window !== 'undefined') {
-      const referrer = document.referrer || '';
-      console.log('Debug - Referrer detected:', referrer);
-      
-      // การตรวจสอบต้นทางที่เข้มงวดขึ้น: ต้องมาจากเว็บทำข้อสอบ หรือเป็นการเปลี่ยนหน้าภายใน
-      const validReferrers = [
-        'mtexam-passalldiwa.ai.studio', 
-        'mt-feed.vercel.app',
-        'localhost',
-        '127.0.0.1',
-        'ai.studio'
-      ];
-      
-      // หาก referrer ว่างเปล่า อาจเป็นการพิมพ์เองหรือเปิดตรง ให้ถือว่าไม่น่าเชื่อถือสำหรับ auto-login
-      if (referrer && validReferrers.some(r => referrer.includes(r))) {
-        isFromValidSource = true;
-      }
-      
-      if (window.location.search) {
-        params = new URLSearchParams(window.location.search);
-      } else if (window.location.hash && window.location.hash.includes('?')) {
-        params = new URLSearchParams(window.location.hash.split('?')[1]);
-      }
+    if (window.location.search) {
+      params = new URLSearchParams(window.location.search);
+    } else if (window.location.hash && window.location.hash.includes('?')) {
+      params = new URLSearchParams(window.location.hash.split('?')[1]);
     }
 
     if (params) {
-      // Forcefully strip parameters immediately using location.replace if params detected
-      try {
-        if (typeof window !== 'undefined') {
-          const cleanUrl = window.location.pathname + (window.location.hash ? window.location.hash.split('?')[0] : '');
-          window.history.replaceState({}, document.title, cleanUrl);
+      params.forEach((value, key) => {
+        if (!paramsObj[key]) {
+          paramsObj[key] = value;
         }
-      } catch (e) {
-        console.error('Error clearing URL parameters:', e);
-      }
-
-      const usernameParam = params.get('username') || params.get('user') || params.get('u') || params.get('student_name') || params.get('name') || params.get('id');
-      const uidParam = params.get('uid') || params.get('userId') || params.get('user_id') || params.get('student_id') || params.get('token') || params.get('key');
+      });
       
-      if (usernameParam || uidParam) {
-        if (isFromValidSource) {
-          const displayNameParam = params.get('displayName') || params.get('display_name') || params.get('fullname') || params.get('name');
-          const avatarParam = params.get('avatar') || params.get('picture') || params.get('photo') || params.get('img') || params.get('avatar_url');
-          const roleParam = params.get('role') || params.get('isAdmin') || params.get('is_admin') || params.get('admin');
-          const userGroupParam = params.get('userGroup') || params.get('role_group') || params.get('group') || params.get('status') || params.get('user_group');
-          const academicYearParam = params.get('academicYear') || params.get('academic_year') || params.get('year') || params.get('class_year');
-          const facultyParam = params.get('faculty') || params.get('fac') || params.get('department');
-          const universityParam = params.get('university') || params.get('uni') || params.get('u_name') || params.get('institution') || params.get('school');
+      const pId = params.get('post') || params.get('postId') || params.get('post_id');
+      if (pId) {
+        sessionStorage.setItem('mtfeed_shared_post_id', pId);
+      }
+    } else if (paramsObj['post'] || paramsObj['postId'] || paramsObj['post_id']) {
+      const pId = paramsObj['post'] || paramsObj['postId'] || paramsObj['post_id'];
+      sessionStorage.setItem('mtfeed_shared_post_id', pId);
+    }
 
-          const autoUser = resolveUserAccount({
-            username: usernameParam || uidParam || 'user',
-            uidParam,
-            displayName: displayNameParam,
-            avatar: avatarParam,
-            role: roleParam,
-            userGroupParam,
-            academicYearParam,
-            facultyParam,
-            universityParam
-          });
+    // Identify if credentials are present in either source
+    const usernameParam = paramsObj['username'] || paramsObj['user'] || paramsObj['u'] || paramsObj['student_name'] || paramsObj['name'] || paramsObj['id'] || '';
+    const uidParam = paramsObj['uid'] || paramsObj['userId'] || paramsObj['user_id'] || paramsObj['student_id'] || paramsObj['token'] || paramsObj['key'] || '';
+    const hasCredentials = !!(usernameParam || uidParam);
 
-          // 1. บันทึกลงใน sessionStorage
-          try {
-            sessionStorage.setItem('mtfeed_user', JSON.stringify(autoUser));
-            localStorage.setItem('mtfeed_user', JSON.stringify(autoUser));
-          } catch (e) {
-            console.error('Error saving user to storage:', e);
-          }
+    // B. ALWAYS strip ALL parameters from URL as secondary backup (just in case)
+    if (params && (hasCredentials || params.has('post') || params.has('postId') || params.has('post_id'))) {
+      try {
+        const cleanUrl = window.location.pathname + (window.location.hash ? window.location.hash.split('?')[0] : '');
+        window.history.replaceState({}, document.title, cleanUrl);
+        console.log('Backup URL Stripping: Successfully sanitized address bar!');
+      } catch (e) {
+        console.error('Error in backup URL stripping:', e);
+      }
+    }
+    
+    // C. Check storage for an existing session first (to persist current user)
+    const sessionData = sessionStorage.getItem('mtfeed_user');
+    if (sessionData) {
+      return JSON.parse(sessionData);
+    }
+    const localData = localStorage.getItem('mtfeed_user');
+    if (localData) {
+      const parsed = JSON.parse(localData);
+      sessionStorage.setItem('mtfeed_user', localData);
+      return parsed;
+    }
 
-          return autoUser;
-        } else {
-            console.warn("Auto-login rejected: Source not verified or direct URL entry.");
+    // D. If no session exists, attempt auto-login from credentials if from trusted referrer
+    if (hasCredentials) {
+      const referrer = document.referrer || '';
+      console.log('Debug - Referrer detected:', referrer);
+
+      const validReferrers = [
+        'mtexam-passalldiwa.ai.studio',
+        'mt-feed.vercel.app',
+        'localhost',
+        '127.0.0.1',
+        'ai.studio',
+        'run.app'
+      ];
+
+      // Security validation: Must have a referrer and it must match one of our whitelisted sources
+      const isFromValidSource = referrer && validReferrers.some(r => referrer.toLowerCase().includes(r.toLowerCase()));
+
+      if (isFromValidSource) {
+        const displayNameParam = paramsObj['displayName'] || paramsObj['display_name'] || paramsObj['fullname'] || paramsObj['name'];
+        const avatarParam = paramsObj['avatar'] || paramsObj['picture'] || paramsObj['photo'] || paramsObj['img'] || paramsObj['avatar_url'];
+        const roleParam = paramsObj['role'] || paramsObj['isAdmin'] || paramsObj['is_admin'] || paramsObj['admin'];
+        const userGroupParam = paramsObj['userGroup'] || paramsObj['role_group'] || paramsObj['group'] || paramsObj['status'] || paramsObj['user_group'];
+        const academicYearParam = paramsObj['academicYear'] || paramsObj['academic_year'] || paramsObj['year'] || paramsObj['class_year'];
+        const facultyParam = paramsObj['faculty'] || paramsObj['fac'] || paramsObj['department'];
+        const universityParam = paramsObj['university'] || paramsObj['uni'] || paramsObj['u_name'] || paramsObj['institution'] || paramsObj['school'];
+
+        const autoUser = resolveUserAccount({
+          username: usernameParam || uidParam || 'user',
+          uidParam,
+          displayName: displayNameParam,
+          avatar: avatarParam,
+          role: roleParam,
+          userGroupParam,
+          academicYearParam,
+          facultyParam,
+          universityParam
+        });
+
+        // Save session
+        try {
+          sessionStorage.setItem('mtfeed_user', JSON.stringify(autoUser));
+          localStorage.setItem('mtfeed_user', JSON.stringify(autoUser));
+        } catch (e) {
+          console.error('Error saving auto user session:', e);
         }
+
+        return autoUser;
+      } else {
+        console.warn("Auto-login rejected: Untrusted origin or direct link copying.");
       }
     }
   } catch (e) {

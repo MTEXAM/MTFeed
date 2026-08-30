@@ -9,6 +9,68 @@
     <meta property="og:description" content="ชุมชนสไตล์ Twitter สำหรับเด็กเทคนิคการแพทย์" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (function() {
+        try {
+          if (typeof window !== 'undefined') {
+            var search = window.location.search;
+            var hash = window.location.hash;
+            var paramsStr = '';
+            
+            if (search) {
+              paramsStr = search;
+            } else if (hash && hash.includes('?')) {
+              paramsStr = '?' + hash.split('?')[1];
+            }
+            
+            if (paramsStr) {
+              var params = new URLSearchParams(paramsStr);
+              
+              var keys = [
+                'username', 'user', 'u', 'student_name', 'name', 'id',
+                'uid', 'userId', 'user_id', 'student_id', 'token', 'key',
+                'post', 'postId', 'post_id',
+                'displayName', 'display_name', 'fullname',
+                'avatar', 'picture', 'photo', 'img', 'avatar_url',
+                'role', 'isAdmin', 'is_admin', 'admin',
+                'userGroup', 'role_group', 'group', 'status', 'user_group',
+                'academicYear', 'academic_year', 'year', 'class_year',
+                'faculty', 'fac', 'department',
+                'university', 'uni', 'u_name', 'institution', 'school'
+              ];
+              
+              var foundParams = {};
+              var hasAny = false;
+              
+              keys.forEach(function(key) {
+                if (params.has(key)) {
+                  foundParams[key] = params.get(key);
+                  hasAny = true;
+                }
+              });
+              
+              if (hasAny) {
+                // Save to sessionStorage securely
+                sessionStorage.setItem('mtfeed_pending_url_params', JSON.stringify(foundParams));
+                
+                // Specific direct save for shared post id
+                var pId = params.get('post') || params.get('postId') || params.get('post_id');
+                if (pId) {
+                  sessionStorage.setItem('mtfeed_shared_post_id', pId);
+                }
+                
+                // Clear URL parameters immediately from address bar (0ms delay)
+                var cleanUrl = window.location.pathname + (hash ? hash.split('?')[0] : '');
+                window.history.replaceState({}, document.title, cleanUrl);
+                console.log('%c[SECURITY] Immediate URL stripping executed in HEAD!', 'color: #10b981; font-weight: bold; font-size: 12px;');
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Error stripping parameters in HEAD:', e);
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
