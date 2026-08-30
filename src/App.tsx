@@ -23,7 +23,21 @@ import { INITIAL_POSTS } from './data';
 function getInitialUser(): SessionUser | null {
   try {
     let params: URLSearchParams | null = null;
+    let isFromValidSource = false;
+    
     if (typeof window !== 'undefined') {
+      const referrer = document.referrer || '';
+      // Only allow auto-login via URL if the user clicked a link from the official exam site or navigating within the app itself
+      if (
+        referrer.includes('mtexam-passalldiwa.ai.studio') || 
+        referrer.includes('mt-feed.vercel.app') ||
+        referrer.includes('localhost') ||
+        referrer.includes('127.0.0.1') ||
+        referrer.includes('ai.studio') // allow dev preview
+      ) {
+        isFromValidSource = true;
+      }
+      
       if (window.location.search) {
         params = new URLSearchParams(window.location.search);
       } else if (window.location.hash && window.location.hash.includes('?')) {
@@ -43,37 +57,49 @@ function getInitialUser(): SessionUser | null {
       const universityParam = params.get('university') || params.get('uni') || params.get('u_name') || params.get('institution') || params.get('school');
 
       if (usernameParam || uidParam) {
-        const autoUser = resolveUserAccount({
-          username: usernameParam || uidParam || 'user',
-          uidParam,
-          displayName: displayNameParam,
-          avatar: avatarParam,
-          role: roleParam,
-          userGroupParam,
-          academicYearParam,
-          facultyParam,
-          universityParam
-        });
+        if (isFromValidSource) {
+          const autoUser = resolveUserAccount({
+            username: usernameParam || uidParam || 'user',
+            uidParam,
+            displayName: displayNameParam,
+            avatar: avatarParam,
+            role: roleParam,
+            userGroupParam,
+            academicYearParam,
+            facultyParam,
+            universityParam
+          });
 
-        // 1. บันทึกลงใน sessionStorage
-        try {
-          sessionStorage.setItem('mtfeed_user', JSON.stringify(autoUser));
-          localStorage.setItem('mtfeed_user', JSON.stringify(autoUser));
-        } catch (e) {
-          console.error('Error saving user to storage:', e);
-        }
-
-        // 2. ลบ Query Parameters ทั้งหมดออกจาก URL ทันที
-        try {
-          if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
-            const cleanUrl = window.location.pathname + (window.location.hash ? window.location.hash.split('?')[0] : '');
-            window.history.replaceState({}, document.title, cleanUrl);
+          // 1. บันทึกลงใน sessionStorage
+          try {
+            sessionStorage.setItem('mtfeed_user', JSON.stringify(autoUser));
+            localStorage.setItem('mtfeed_user', JSON.stringify(autoUser));
+          } catch (e) {
+            console.error('Error saving user to storage:', e);
           }
-        } catch (e) {
-          console.error('Error clearing URL parameters:', e);
-        }
 
-        return autoUser;
+          // 2. ลบ Query Parameters ทั้งหมดออกจาก URL ทันที
+          try {
+            if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
+              const cleanUrl = window.location.pathname + (window.location.hash ? window.location.hash.split('?')[0] : '');
+              window.history.replaceState({}, document.title, cleanUrl);
+            }
+          } catch (e) {
+            console.error('Error clearing URL parameters:', e);
+          }
+
+          return autoUser;
+        } else {
+          console.warn("Blocked auto-login attempt from unauthorized origin or direct URL entry.");
+          try {
+            if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
+              const cleanUrl = window.location.pathname + (window.location.hash ? window.location.hash.split('?')[0] : '');
+              window.history.replaceState({}, document.title, cleanUrl);
+            }
+          } catch (e) {
+            console.error('Error clearing URL parameters:', e);
+          }
+        }
       }
     }
 
@@ -127,13 +153,24 @@ export default function App() {
     // 1. Subscribe to Cloud Firestore Users
     const unsubscribeUsers = subscribeToUsers((firestoreUsers) => {
       if (firestoreUsers) {
-        setRegisteredUsers(firestoreUsers);
-        // Sync to local registry cache
+        // Sync to local registry cache, preserving local custom profile changes
         try {
-          const regMap: Record<string, SessionUser> = {};
+          const localRegistry = getRegisteredUsers();
+          const regMap: Record<string, SessionUser> = { ...localRegistry };
+          
           firestoreUsers.forEach(u => {
             const key = u.uid || u.username || u.id;
-            if (key) regMap[key] = u;
+            if (key) {
+              const existingLocal = localRegistry[key];
+              regMap[key] = {
+                ...(u || {}),
+                ...(existingLocal || {}),
+                uid: u.uid || existingLocal?.uid || key,
+                username: u.username || existingLocal?.username || key,
+                name: existingLocal?.name || u.name,
+                avatar: existingLocal?.avatar || u.avatar
+              } as SessionUser;
+            }
           });
 
           // Ensure current logged in user is in registry & Firestore
@@ -143,15 +180,17 @@ export default function App() {
               const cur = JSON.parse(currentUserRaw);
               if (cur && (cur.uid || cur.username)) {
                 const key = cur.uid || cur.username || cur.id;
-                if (!regMap[key]) {
-                  regMap[key] = cur;
-                  saveUserToFirestore(cur);
-                }
+                regMap[key] = {
+                  ...(regMap[key] || {}),
+                  ...cur
+                };
+                saveUserToFirestore(regMap[key]);
               }
             } catch (e) {}
           }
 
           localStorage.setItem('mtfeed_accounts_registry', JSON.stringify(regMap));
+          setRegisteredUsers(Object.values(regMap));
         } catch (e) {}
       }
     });
@@ -299,17 +338,32 @@ export default function App() {
   useEffect(() => {
     // Check if user came with URL params just now
     let params: URLSearchParams | null = null;
+    let isFromValidSource = false;
+
     if (window.location.search) {
       params = new URLSearchParams(window.location.search);
     } else if (window.location.hash && window.location.hash.includes('?')) {
       params = new URLSearchParams(window.location.hash.split('?')[1]);
+    }
+    
+    if (typeof window !== 'undefined') {
+      const referrer = document.referrer || '';
+      if (
+        referrer.includes('mtexam-passalldiwa.ai.studio') || 
+        referrer.includes('mt-feed.vercel.app') ||
+        referrer.includes('localhost') ||
+        referrer.includes('127.0.0.1') ||
+        referrer.includes('ai.studio')
+      ) {
+        isFromValidSource = true;
+      }
     }
 
     if (params) {
       const usernameParam = params.get('username') || params.get('user') || params.get('u') || params.get('student_name') || params.get('name') || params.get('id');
       const shareText = params.get('share_text') || params.get('text') || params.get('q');
       
-      if (usernameParam) {
+      if (usernameParam && isFromValidSource) {
         setShowWelcomeAlert(true);
         const timer = setTimeout(() => setShowWelcomeAlert(false), 7000);
         return () => clearTimeout(timer);
@@ -335,6 +389,7 @@ export default function App() {
     setRegisteredUsers(getAllRegisteredUsersList());
     try {
       localStorage.setItem('mtfeed_user', JSON.stringify(userData));
+      sessionStorage.setItem('mtfeed_user', JSON.stringify(userData));
     } catch (e) {
       console.error(e);
     }
@@ -351,6 +406,14 @@ export default function App() {
     saveUserToFirestore(updatedUser);
     try {
       localStorage.setItem('mtfeed_user', JSON.stringify(updatedUser));
+      sessionStorage.setItem('mtfeed_user', JSON.stringify(updatedUser));
+      
+      const registry = getRegisteredUsers();
+      const key = updatedUser.uid || updatedUser.username;
+      if (key) {
+        registry[key] = updatedUser;
+        localStorage.setItem('mtfeed_accounts_registry', JSON.stringify(registry));
+      }
     } catch (e) {}
 
     // Update registeredUsers list in state
@@ -426,6 +489,7 @@ export default function App() {
     setUser(null);
     try {
       localStorage.removeItem('mtfeed_user');
+      sessionStorage.removeItem('mtfeed_user');
     } catch (e) {
       console.error(e);
     }
@@ -547,7 +611,7 @@ export default function App() {
 
   const handleInteraction = (postId: string, type: 'reply' | 'repost' | 'like' | 'bookmark') => {
     if (!user && type !== 'reply') {
-      setIsAuthModalOpen(true);
+      window.open('https://mtexam-passalldiwa.ai.studio/', '_blank');
       return;
     }
 
@@ -607,7 +671,7 @@ export default function App() {
 
   const handleVote = (postId: string, optionId: string) => {
     if (!user) {
-      setIsAuthModalOpen(true);
+      window.open('https://mtexam-passalldiwa.ai.studio/', '_blank');
       return;
     }
 
@@ -640,7 +704,7 @@ export default function App() {
 
   const handleComment = (postId: string, content: string) => {
     if (!user) {
-      setIsAuthModalOpen(true);
+      window.open('https://mtexam-passalldiwa.ai.studio/', '_blank');
       return;
     }
 
@@ -719,15 +783,17 @@ export default function App() {
           <div className="flex items-center space-x-2 max-w-5xl mx-auto flex-1">
             <span className="font-semibold text-base">⚠️</span>
             <span className="font-medium">
-              ไม่พบข้อมูลการเข้าใช้งาน กรุณาเข้าสู่ระบบผ่านเว็บทำข้อสอบอีกครั้ง หรือกดเข้าสู่ระบบด้วยรหัส UID
+              ไม่พบข้อมูลการเข้าใช้งาน กรุณาเข้าสู่ระบบผ่านเว็บไซต์หลักเท่านั้น
             </span>
           </div>
-          <button 
-            onClick={() => setIsAuthModalOpen(true)}
-            className="px-3 py-1 bg-white text-amber-900 rounded-lg text-xs font-semibold hover:bg-amber-50 transition-colors shadow-sm ml-2 flex-shrink-0"
+          <a 
+            href="https://mtexam-passalldiwa.ai.studio/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-1 bg-white text-amber-900 rounded-lg text-xs font-semibold hover:bg-amber-50 transition-colors shadow-sm ml-2 flex-shrink-0 text-center"
           >
-            เข้าสู่ระบบ
-          </button>
+            ไปที่เว็บไซต์หลัก
+          </a>
         </div>
       )}
 
@@ -753,9 +819,9 @@ export default function App() {
 
       <Navbar 
         user={user} 
-        onLoginClick={() => setIsAuthModalOpen(true)} 
+        onLoginClick={() => window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')} 
         onAdminClick={() => setIsAdminBoardOpen(true)}
-        onEditProfileClick={() => user ? setIsEditProfileOpen(true) : setIsAuthModalOpen(true)}
+        onEditProfileClick={() => user ? setIsEditProfileOpen(true) : window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')}
         onViewProfile={handleViewProfile}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -773,7 +839,7 @@ export default function App() {
           }}
           unreadCount={unreadNotificationsCount}
           onOpenNotifications={() => setIsNotificationsModalOpen(true)}
-          onEditProfileClick={() => user ? setIsEditProfileOpen(true) : setIsAuthModalOpen(true)}
+          onEditProfileClick={() => user ? setIsEditProfileOpen(true) : window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')}
           onViewProfile={handleViewProfile}
           currentUser={user}
         />
@@ -783,7 +849,7 @@ export default function App() {
           setPosts={setPosts}
           activeCategory={activeCategory} 
           user={user} 
-          onLoginClick={() => setIsAuthModalOpen(true)} 
+          onLoginClick={() => window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')} 
           isAdminBoardOpen={isAdminBoardOpen}
           onCloseAdminBoard={() => setIsAdminBoardOpen(false)}
           externalSharedText={externalSharedText}
@@ -849,7 +915,7 @@ export default function App() {
             </span>
           </button>
           <button 
-            onClick={() => user ? handleViewProfile(user) : setIsAuthModalOpen(true)} 
+            onClick={() => user ? handleViewProfile(user) : window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')} 
             className="p-2 text-gray-500 hover:text-gray-900 transition-colors flex flex-col items-center"
             title={user ? `@${user.username} (ดูโปรไฟล์และโพสต์)` : "เข้าสู่ระบบ"}
           >
@@ -936,6 +1002,7 @@ export default function App() {
               const updated = { ...user, isAdmin: true, needsAdminVerification: false };
               setUser(updated);
               localStorage.setItem('mtfeed_user', JSON.stringify(updated));
+              sessionStorage.setItem('mtfeed_user', JSON.stringify(updated));
             }
             return true;
           }
@@ -984,6 +1051,7 @@ export default function App() {
           }}
           onCancel={() => {
             localStorage.removeItem('mtfeed_user');
+            sessionStorage.removeItem('mtfeed_user');
             setUser(null);
             window.location.search = '';
           }}

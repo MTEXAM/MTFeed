@@ -114,20 +114,16 @@ export function PostComposer({
       <div className="px-4 py-5 sm:px-6 border-b border-gray-200 bg-amber-50/50">
         <div className="text-center py-2 max-w-lg mx-auto">
           <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-amber-100 text-amber-700 mb-2 text-base">
-            👋
+            🔒
           </div>
-          <h3 className="text-sm font-bold text-gray-800">เข้าสู่ระบบเพื่อเริ่มโพสต์และพูดคุยกับเพื่อนๆ</h3>
+          <h3 className="text-sm font-bold text-gray-800">กรุณาเข้าสู่ระบบผ่านเว็บไซต์หลัก</h3>
           <p className="text-xs text-gray-600 mt-1 leading-relaxed">
-            สามารถเข้าสู่ระบบด่วนด้วยชื่อผู้ใช้ใดก็ได้ หรือเข้าผ่านลิงก์เชื่อมต่อจาก MTExam เพื่อซิงค์รหัส 8 หลักอัตโนมัติ
+            คุณสามารถเข้าสู่ระบบและร่วมพูดคุยได้โดยผ่านเว็บไซต์ 
+            <a href="https://mtexam-passalldiwa.ai.studio/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline mx-1">
+              https://mtexam-passalldiwa.ai.studio/
+            </a>
+            เท่านั้น
           </p>
-          <button
-            type="button"
-            onClick={onLoginClick}
-            className="mt-3 inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
-          >
-            <AtSign className="w-3.5 h-3.5 mr-1.5" />
-            <span>เข้าสู่ระบบ / เลือกบัญชี</span>
-          </button>
         </div>
       </div>
     );

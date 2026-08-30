@@ -210,10 +210,10 @@ export function Navbar({
               </>
             ) : (
               <div className="flex space-x-2">
-                <button onClick={onLoginClick} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-full text-red-600 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">
+                <a href="https://mtexam-passalldiwa.ai.studio/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-full text-red-600 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">
                   <User className="w-4 h-4 mr-2" />
                   เข้าสู่ระบบ
-                </button>
+                </a>
               </div>
             )}
           </div>

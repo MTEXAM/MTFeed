@@ -177,7 +177,7 @@ export function UserProfileModal({
   const badgeStyle = getBadgeStyle(badgeText);
 
   const handleCopyProfileLink = () => {
-    const url = `${window.location.origin}/?user=@${targetUsername}`;
+    const url = `https://mt-feed.vercel.app/?user=@${targetUsername}`;
     navigator.clipboard.writeText(url);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);

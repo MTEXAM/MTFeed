@@ -75,7 +75,7 @@ export function PostItem({
     const shareData = {
       title: 'MT Feed - ' + authorName,
       text: post?.content || '',
-      url: window.location.href,
+      url: 'https://mt-feed.vercel.app',
     };
     
     if (navigator.share) {
@@ -482,7 +482,9 @@ export function PostItem({
                 </form>
               ) : (
                 <div className="text-center py-3 bg-gray-50 rounded-xl">
-                  <p className="text-sm text-gray-500">กรุณาเข้าสู่ระบบเพื่อแสดงความคิดเห็น</p>
+                  <p className="text-sm text-gray-500">
+                    กรุณาเข้าสู่ระบบผ่าน<a href="https://mtexam-passalldiwa.ai.studio/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline mx-1">เว็บไซต์หลัก</a>เพื่อแสดงความคิดเห็น
+                  </p>
                 </div>
               )}
             </div>
