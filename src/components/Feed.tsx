@@ -56,7 +56,7 @@ export function Feed({
       : { 
           id: user.uid || user.id || user.username, 
           name: (user.isAdmin || user.badge === '👑 Admin') ? '👑 Admin' : (user.name || user.username), 
-          username: user.username, 
+          username: (user.isAdmin || user.badge === '👑 Admin') ? '👑Admin' : user.username, 
           avatar: user.avatar || (user.isAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.username)}&backgroundColor=cccccc`),
           badge: user.badge || (user.isAdmin ? '👑 Admin' : ''),
           userGroup: user.userGroup,
@@ -160,7 +160,7 @@ export function Feed({
     const author = { 
       id: user.uid || user.id || user.username, 
       name: (user.isAdmin || user.badge === '👑 Admin') ? '👑 Admin' : (user.name || user.username), 
-      username: user.username, 
+      username: (user.isAdmin || user.badge === '👑 Admin') ? '👑Admin' : user.username, 
       avatar: user.avatar || (user.isAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}&backgroundColor=cccccc`),
       badge: user.badge || (user.isAdmin ? '👑 Admin' : ''),
       userGroup: user.userGroup,

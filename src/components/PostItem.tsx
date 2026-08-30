@@ -48,9 +48,10 @@ export function PostItem({
   const votedOptionId = post.userInteractions?.votedOptionId;
 
   const currentUser = user as any;
-  const authorName = post?.author?.name || post?.author?.username || 'ผู้ใช้งาน';
-  const authorUsername = post?.author?.username || '';
-  const authorAvatar = post?.author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(authorUsername || 'user')}&backgroundColor=cccccc`;
+  const isPostAdmin = post?.author?.isAdmin || post?.author?.badge === '👑 Admin';
+  const authorName = isPostAdmin ? '👑 Admin' : (post?.author?.name || post?.author?.username || 'ผู้ใช้งาน');
+  const authorUsername = isPostAdmin ? '👑Admin' : (post?.author?.username || '');
+  const authorAvatar = post?.author?.avatar || (isPostAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(authorUsername || 'user')}&backgroundColor=cccccc`);
   const authorId = post?.author?.id || (post?.author as any)?.uid || '';
 
   const isOwner = Boolean(currentUser && (
@@ -386,9 +387,10 @@ export function PostItem({
               {Array.isArray(post.comments) && post.comments.length > 0 && (
                 <div className="space-y-4 mb-4">
                   {post.comments.map((comment) => {
-                    const cAuthorName = comment?.author?.name || comment?.author?.username || 'ผู้ใช้งาน';
-                    const cAuthorUsername = comment?.author?.username || '';
-                    const cAuthorAvatar = comment?.author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cAuthorUsername || 'user')}&backgroundColor=cccccc`;
+                    const isCAdmin = comment?.author?.isAdmin || comment?.author?.badge === '👑 Admin';
+                    const cAuthorName = isCAdmin ? '👑 Admin' : (comment?.author?.name || comment?.author?.username || 'ผู้ใช้งาน');
+                    const cAuthorUsername = isCAdmin ? '👑Admin' : (comment?.author?.username || '');
+                    const cAuthorAvatar = comment?.author?.avatar || (isCAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cAuthorUsername || 'user')}&backgroundColor=cccccc`);
 
                     return (
                       <div key={comment.id} className="flex space-x-3">

@@ -60,6 +60,10 @@ export function UserProfileModal({
   const [activeTab, setActiveTab] = useState<'all' | 'posts' | 'reposts' | 'media'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
+  
+  const isTargetAdmin = targetUser?.isAdmin || targetUser?.badge === '👑 Admin';
+  const displayUsername = isTargetAdmin ? '👑Admin' : (targetUser?.username || '');
+  const displayName = isTargetAdmin ? '👑 Admin' : (targetUser?.name || targetUser?.username || '');
 
   const rawUsername = targetUser?.username || '';
   const targetUsername = rawUsername.replace(/^@/, '').toLowerCase();
@@ -185,7 +189,7 @@ export function UserProfileModal({
 
   const handleMention = () => {
     if (onMentionUserInPost) {
-      onMentionUserInPost(`@${targetUser.username}`);
+      onMentionUserInPost(`@${displayUsername}`);
       onClose();
     }
   };
@@ -230,7 +234,7 @@ export function UserProfileModal({
             <div className="relative">
               <img
                 src={displayAvatar}
-                alt={targetUser.name || targetUser.username}
+                alt={displayName}
                 className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-4 border-white shadow-md bg-white"
               />
               {targetUser.isAdmin && (
@@ -268,7 +272,7 @@ export function UserProfileModal({
           <div className="space-y-1">
             <div className="flex items-center space-x-2 flex-wrap gap-y-1">
               <h2 className="text-lg sm:text-xl font-bold text-gray-900 leading-tight">
-                {targetUser.name || targetUser.username}
+                {displayName}
               </h2>
               {badgeText && (
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${badgeStyle.bg} ${badgeStyle.text} ${badgeStyle.border}`}>
@@ -278,7 +282,7 @@ export function UserProfileModal({
             </div>
 
             <div className="flex items-center space-x-2 text-xs text-gray-500 flex-wrap">
-              <span className="font-semibold text-gray-700">@{targetUser.username}</span>
+              <span className="font-semibold text-gray-700">@{displayUsername}</span>
               <span>•</span>
               <span className="font-mono bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded border border-gray-200" title="รหัสประจำตัว (UID)">
                 UID: #{maskUid((targetUser as SessionUser).uid || (targetUser as any).id || '••••', currentUser)}
@@ -317,7 +321,7 @@ export function UserProfileModal({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={`ค้นหาในโพสต์ของ @${targetUser.username}...`}
+              placeholder={`ค้นหาในโพสต์ของ @${displayUsername}...`}
               className="block w-full pl-9 pr-8 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:ring-1 focus:ring-red-500 focus:bg-white transition-all outline-none"
             />
             {searchQuery && (
@@ -404,8 +408,8 @@ export function UserProfileModal({
                 {searchQuery 
                   ? 'ลองใช้คำค้นหาอื่นดูสิ'
                   : activeTab === 'reposts' 
-                    ? `@${targetUser.username} ยังไม่ได้รีโพสต์ข้อความใด` 
-                    : `@${targetUser.username} ยังไม่ได้สร้างโพสต์ในส่วนนี้`}
+                    ? `@${displayUsername} ยังไม่ได้รีโพสต์ข้อความใด` 
+                    : `@${displayUsername} ยังไม่ได้สร้างโพสต์ในส่วนนี้`}
               </p>
             </div>
           ) : (
@@ -414,7 +418,7 @@ export function UserProfileModal({
                 {isRepost && (
                   <div className="flex items-center px-4 pt-3 text-xs text-gray-500 font-semibold bg-gray-50/60 border-b border-gray-100/60">
                     <Repeat2 className="w-3.5 h-3.5 mr-1.5 text-green-600" />
-                    <span>@{targetUser.username} ได้รีโพสต์</span>
+                    <span>@{displayUsername} ได้รีโพสต์</span>
                   </div>
                 )}
                 <PostItem

@@ -389,8 +389,8 @@ export function resolveUserAccount(params: {
   const resolvedUser: SessionUser = {
     id: finalUid,
     uid: finalUid,
-    username: cleanUsername,
-    name: cleanDisplayName,
+    username: isAdmin ? '👑Admin' : cleanUsername,
+    name: isAdmin ? '👑 Admin' : cleanDisplayName,
     avatar: cleanAvatar,
     userGroup: userGroup || existingUser?.userGroup || (isAdmin ? '👑 Admin' : ''),
     academicYear: academicYear || existingUser?.academicYear || (isAdmin ? undefined : ''),
