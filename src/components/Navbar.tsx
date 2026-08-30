@@ -36,7 +36,7 @@ export function Navbar({
     }
   };
 
-  const badgeText = user ? (user.badge || formatUserBadge(user)) : '';
+  const badgeText = user ? (formatUserBadge(user)) : '';
   const badgeStyle = getBadgeStyle(badgeText);
   const educationDetail = user ? [user.faculty, user.university].filter(Boolean).join(' • ') : '';
 

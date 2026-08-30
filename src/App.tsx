@@ -719,7 +719,7 @@ export default function App() {
         avatar: user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.username)}&backgroundColor=cccccc`,
         isVerified: user.isAdmin,
         isAdmin: user.isAdmin,
-        badge: user.badge || formatUserBadge(user),
+        badge: formatUserBadge(user),
         faculty: user.faculty,
         university: user.university
       },

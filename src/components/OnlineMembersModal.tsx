@@ -262,7 +262,7 @@ export function OnlineMembersModal({
           ) : (
             displayList.map((member) => {
               const isSelf = currentUser && (member.username.toLowerCase() === currentUser.username.toLowerCase() || member.uid === currentUser.uid);
-              const badgeText = member.badge || formatUserBadge(member);
+              const badgeText = formatUserBadge(member);
               const style = getBadgeStyle(badgeText);
 
 

@@ -243,12 +243,21 @@ export function formatUserBadge(user: {
   uid?: string;
 }): string {
   if (user.isAdmin) return '👑 Admin';
-  if (user.badge && user.badge !== '👑 Admin') return user.badge;
+  
+  if (user.badge && user.badge !== '👑 Admin') {
+    if (user.badge.includes('นศ.เทคนิคการแพทย์') || user.badge.includes('นักศึกษาเทคนิคการแพทย์')) {
+      return '';
+    }
+    return user.badge;
+  }
   
   if (user.userGroup) {
     const group = user.userGroup.trim();
     if (group.includes('Admin') || group.includes('ผู้ดูแลระบบ')) {
-      return '🔬🎓 นศ.เทคนิคการแพทย์';
+      return '';
+    }
+    if (group.includes('นศ.เทคนิคการแพทย์') || group.includes('นักศึกษาเทคนิคการแพทย์')) {
+      return '';
     }
     if (user.academicYear && (group.includes('นศ.') || group.includes('นักศึกษา') || group.includes('นักเรียน'))) {
       const cleanYear = user.academicYear.replace(/\(.*?\)/g, '').trim();
@@ -257,7 +266,7 @@ export function formatUserBadge(user: {
     return group;
   }
   
-  return '🔬🎓 นศ.เทคนิคการแพทย์';
+  return '';
 }
 
 export function getBadgeStyle(badge?: string): { bg: string; text: string; border: string } {
@@ -350,7 +359,7 @@ export function resolveUserAccount(params: {
   // Sanitize non-admins: if someone else has "Admin" or "ผู้ดูแลระบบ" in group, reset it
   if (!isAdmin) {
     if (userGroup && (userGroup.toLowerCase().includes('admin') || userGroup.includes('ผู้ดูแลระบบ'))) {
-      userGroup = '🔬🎓 นศ.เทคนิคการแพทย์';
+      userGroup = '';
     }
   } else {
     // Force admin groups for the real admin
@@ -361,8 +370,8 @@ export function resolveUserAccount(params: {
   // Render badge securely
   const computedBadge = formatUserBadge({
     isAdmin,
-    userGroup: userGroup || existingUser?.userGroup || (isAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
-    academicYear: academicYear || existingUser?.academicYear || (isAdmin ? undefined : 'ปี 3'),
+    userGroup: userGroup || existingUser?.userGroup || (isAdmin ? '👑 Admin' : ''),
+    academicYear: academicYear || existingUser?.academicYear || (isAdmin ? undefined : ''),
     username: cleanUsername,
     uid: finalUid
   });
@@ -383,9 +392,9 @@ export function resolveUserAccount(params: {
     username: cleanUsername,
     name: cleanDisplayName,
     avatar: cleanAvatar,
-    userGroup: userGroup || existingUser?.userGroup || (isAdmin ? '👑 Admin' : '🔬🎓 นศ.เทคนิคการแพทย์'),
-    academicYear: academicYear || existingUser?.academicYear || (isAdmin ? undefined : 'ปี 3'),
-    faculty: faculty || existingUser?.faculty || 'คณะเทคนิคการแพทย์',
+    userGroup: userGroup || existingUser?.userGroup || (isAdmin ? '👑 Admin' : ''),
+    academicYear: academicYear || existingUser?.academicYear || (isAdmin ? undefined : ''),
+    faculty: faculty || existingUser?.faculty || '',
     university: university || existingUser?.university || '',
     badge: computedBadge,
     isAdmin,

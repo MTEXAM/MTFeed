@@ -23,7 +23,7 @@ export function SidebarLeft({
   onLogoutClick?: () => void;
   currentUser?: SessionUser | null;
 }) {
-  const badgeText = currentUser ? (currentUser.badge || formatUserBadge(currentUser)) : '';
+  const badgeText = currentUser ? (formatUserBadge(currentUser)) : '';
   const badgeStyle = getBadgeStyle(badgeText);
 
 

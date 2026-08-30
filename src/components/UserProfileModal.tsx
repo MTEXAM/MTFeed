@@ -173,7 +173,7 @@ export function UserProfileModal({
       : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(rawUsername || 'User')}&backgroundColor=cccccc`
   );
 
-  const badgeText = targetUser.badge || formatUserBadge(targetUser as any);
+  const badgeText = formatUserBadge(targetUser as any);
   const badgeStyle = getBadgeStyle(badgeText);
 
   const handleCopyProfileLink = () => {
