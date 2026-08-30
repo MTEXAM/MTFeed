@@ -59,13 +59,15 @@ function getInitialUser(): SessionUser | null {
     if (typeof window !== 'undefined') {
       const referrer = document.referrer || '';
       // Only allow auto-login via URL if the user clicked a link from the official exam site or navigating within the app itself
-      if (
-        referrer.includes('mtexam-passalldiwa.ai.studio') || 
-        referrer.includes('mt-feed.vercel.app') ||
-        referrer.includes('localhost') ||
-        referrer.includes('127.0.0.1') ||
-        referrer.includes('ai.studio') // allow dev preview
-      ) {
+      const validReferrers = [
+        'mtexam-passalldiwa.ai.studio', 
+        'mt-feed.vercel.app',
+        'localhost',
+        '127.0.0.1',
+        'ai.studio'
+      ];
+      
+      if (validReferrers.some(r => referrer.includes(r))) {
         isFromValidSource = true;
       }
       
@@ -88,6 +90,16 @@ function getInitialUser(): SessionUser | null {
       const universityParam = params.get('university') || params.get('uni') || params.get('u_name') || params.get('institution') || params.get('school');
 
       if (usernameParam || uidParam) {
+        // ลบพารามิเตอร์ออกก่อนตรวจสอบสิทธิ์ เพื่อความปลอดภัยและ UI ที่สะอาด
+        try {
+          if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
+            const cleanUrl = window.location.pathname + (window.location.hash ? window.location.hash.split('?')[0] : '');
+            window.history.replaceState({}, document.title, cleanUrl);
+          }
+        } catch (e) {
+          console.error('Error clearing URL parameters:', e);
+        }
+
         if (isFromValidSource) {
           const autoUser = resolveUserAccount({
             username: usernameParam || uidParam || 'user',
@@ -109,26 +121,7 @@ function getInitialUser(): SessionUser | null {
             console.error('Error saving user to storage:', e);
           }
 
-          // 2. ลบ Query Parameters ทั้งหมดออกจาก URL ทันที
-          try {
-            if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
-              const cleanUrl = window.location.pathname + (window.location.hash ? window.location.hash.split('?')[0] : '');
-              window.history.replaceState({}, document.title, cleanUrl);
-            }
-          } catch (e) {
-            console.error('Error clearing URL parameters:', e);
-          }
-
           return autoUser;
-        } else {
-          try {
-            if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
-              const cleanUrl = window.location.pathname + (window.location.hash ? window.location.hash.split('?')[0] : '');
-              window.history.replaceState({}, document.title, cleanUrl);
-            }
-          } catch (e) {
-            console.error('Error clearing URL parameters:', e);
-          }
         }
       }
     }
