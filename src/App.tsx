@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Navbar } from './components/Navbar';
 import { SidebarLeft } from './components/SidebarLeft';
 import { Feed } from './components/Feed';
@@ -16,7 +16,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post, User } from './types';
 import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid, formatUserBadge, DEFAULT_ACTIVE_USERS } from './utils/auth';
-import { subscribeToPosts, subscribeToUsers, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore, syncPostsToFirestore, getUserFromFirestore } from './utils/firestoreService';
+import { subscribeToPosts, subscribeToUsers, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore, syncPostsToFirestore, getUserFromFirestore, getBackupPostsFromSQLite, getBackupUsersFromSQLite, restoreBackupsToFirestore } from './utils/firestoreService';
 import { formatRealTime } from './utils/timeUtils';
 import { INITIAL_POSTS } from './data';
 
@@ -150,6 +150,10 @@ function getInitialUser(): SessionUser | null {
 }
 
 export default function App() {
+  // Keep track of live-subscribed Firestore items for self-healing comparison
+  const lastFirestorePostsRef = useRef<Post[]>([]);
+  const lastFirestoreUsersRef = useRef<SessionUser[]>([]);
+
   const [activeCategory, setActiveCategory] = useState('all');
   const [externalSharedText, setExternalSharedText] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -201,6 +205,7 @@ export default function App() {
     // 1. Subscribe to Cloud Firestore Users
     const unsubscribeUsers = subscribeToUsers((firestoreUsers) => {
       if (firestoreUsers) {
+        lastFirestoreUsersRef.current = firestoreUsers;
         try {
           const regMap: Record<string, SessionUser> = {};
           
@@ -250,6 +255,7 @@ export default function App() {
     // 2. Subscribe to Cloud Firestore Posts
     const unsubscribePosts = subscribeToPosts((firestorePosts) => {
       if (firestorePosts !== undefined && firestorePosts !== null) {
+        lastFirestorePostsRef.current = firestorePosts;
         setPosts(prevPosts => {
           const merged = mergePostsLists(firestorePosts, prevPosts);
           try {
@@ -373,6 +379,96 @@ export default function App() {
     }
     hydrateUser();
   }, []);
+
+  // SQLite Layer 2 Backup: Load local backup from SQLite server and trigger Throttled Self-Healing back-sync if Firestore is out of sync
+  useEffect(() => {
+    let sqlitePostsList: Post[] = [];
+    let sqliteUsersList: SessionUser[] = [];
+
+    async function loadSQLiteBackups() {
+      try {
+        console.log('[SQLITE RESTORE] Fetching SQLite posts backup...');
+        const sqlitePosts = await getBackupPostsFromSQLite();
+        if (sqlitePosts && sqlitePosts.length > 0) {
+          sqlitePostsList = sqlitePosts;
+          console.log(`[SQLITE RESTORE] Found ${sqlitePosts.length} posts in SQLite backup. Merging...`);
+          setPosts(prevPosts => {
+            const merged = mergePostsLists(sqlitePosts, prevPosts);
+            try {
+              localStorage.setItem('mtfeed_posts', JSON.stringify(merged));
+            } catch (e) {}
+            return merged;
+          });
+        }
+      } catch (err) {
+        console.warn('Could not load backup from SQLite:', err);
+      }
+      
+      try {
+        console.log('[SQLITE RESTORE] Fetching SQLite users backup...');
+        const sqliteUsers = await getBackupUsersFromSQLite();
+        if (sqliteUsers && sqliteUsers.length > 0) {
+          sqliteUsersList = sqliteUsers;
+          console.log(`[SQLITE RESTORE] Found ${sqliteUsers.length} users in SQLite backup.`);
+          // Sync users to registered users state
+          setRegisteredUsers(prev => {
+            const regMap: Record<string, SessionUser> = {};
+            // First load current registered users
+            prev.forEach(u => {
+              const key = u.uid || u.username || u.id;
+              if (key) regMap[key] = u;
+            });
+            // Merge SQLite users
+            sqliteUsers.forEach(u => {
+              const key = u.uid || u.username || u.id;
+              if (key) {
+                const existing = regMap[key];
+                if (!existing || (u.updatedAt || 0) > (existing.updatedAt || 0)) {
+                  regMap[key] = u;
+                  // If this is the currently logged in user, update state too!
+                  if (user && (u.uid === user.uid || u.username === user.username)) {
+                    if ((u.updatedAt || 0) > (user.updatedAt || 0)) {
+                      setUser(u);
+                      localStorage.setItem('mtfeed_user', JSON.stringify(u));
+                    }
+                  }
+                }
+              }
+            });
+            const mergedList = Object.values(regMap);
+            localStorage.setItem('mtfeed_accounts_registry', JSON.stringify(regMap));
+            return mergedList;
+          });
+        }
+      } catch (err) {
+        console.warn('Could not load user backups from SQLite:', err);
+      }
+
+      // Self-Healing Comparison: Check if any items in SQLite backups are missing in Firestore,
+      // and trigger Throttled Back-Sync to Firestore
+      setTimeout(() => {
+        const firestorePostIds = new Set(lastFirestorePostsRef.current.map(p => p.id));
+        const firestoreUserIds = new Set(lastFirestoreUsersRef.current.map(u => u.uid || u.username || u.id));
+
+        const missingPosts = sqlitePostsList.filter(p => p && p.id && !firestorePostIds.has(p.id));
+        const missingUsers = sqliteUsersList.filter(u => {
+          const key = u && (u.uid || u.username || u.id);
+          return key && !firestoreUserIds.has(key);
+        });
+
+        if (missingPosts.length > 0 || missingUsers.length > 0) {
+          console.log(`[SELF-HEALING] Out of sync! Found ${missingPosts.length} posts and ${missingUsers.length} users in SQLite missing from Firestore.`);
+          restoreBackupsToFirestore(missingPosts, missingUsers).catch(err => {
+            console.error('[SELF-HEALING ERROR] Backup restoration failed:', err);
+          });
+        } else {
+          console.log('[SELF-HEALING] Firestore is fully in-sync with SQLite backup! No restoration needed.');
+        }
+      }, 3500); // 3.5 seconds delay to allow Firestore subscription to settle
+    }
+    
+    loadSQLiteBackups();
+  }, [user]);
 
   // Save posts to localStorage for offline cache
   useEffect(() => {

@@ -134,6 +134,13 @@ export async function saveUserToFirestore(user: SessionUser): Promise<void> {
       ...userData,
       updatedAt: Date.now()
     }, { merge: true });
+
+    // SQLite Layer 2 Backup: Save User profile to local SQLite
+    fetch('/api/backup/user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...userData, updatedAt: Date.now() })
+    }).catch(err => console.warn('SQLite user backup sync failed:', err));
   } catch (e) {
     console.error('Error saving user to Firestore:', e);
   }
@@ -180,6 +187,9 @@ export async function deleteUserFromFirestore(uidOrUsername: string): Promise<bo
 
     if (found) {
       await Promise.all(deletePromises);
+      // SQLite Layer 2 Backup: Delete user backup from local SQLite
+      fetch(`/api/backup/users/${uidOrUsername}`, { method: 'DELETE' })
+        .catch(err => console.warn('SQLite user delete sync failed:', err));
     }
     return found;
   } catch (e) {
@@ -493,10 +503,19 @@ export async function savePostToFirestore(post: Post): Promise<void> {
   try {
     const postData = sanitizeForFirestore(post);
     const postRef = doc(db, POSTS_COLLECTION, post.id);
-    await setDoc(postRef, {
+    const fullPostWithTime = {
       ...postData,
       createdAtMs: (post as any).createdAtMs || Date.now()
-    }, { merge: true });
+    };
+    
+    await setDoc(postRef, fullPostWithTime, { merge: true });
+
+    // SQLite Layer 2 Backup: Save Post to local SQLite
+    fetch('/api/backup/posts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify([fullPostWithTime])
+    }).catch(err => console.warn('SQLite post backup sync failed:', err));
   } catch (e) {
     console.warn('Error saving post to Firestore (using local fallback):', e);
   }
@@ -507,19 +526,32 @@ export async function syncPostsToFirestore(posts: Post[]): Promise<void> {
   try {
     const deletedIds = getDeletedPostIds();
     const batch = writeBatch(db);
+    const backupList: Post[] = [];
+
     posts.forEach((post) => {
       if (post && post.id && !deletedIds.has(post.id)) {
         const postRef = doc(db, POSTS_COLLECTION, post.id);
         const postData = sanitizeForFirestore(post);
-        batch.set(postRef, {
+        const fullPostWithTime = {
           ...postData,
           createdAtMs: (post as any).createdAtMs || Date.now()
-        }, { merge: true });
+        };
+        batch.set(postRef, fullPostWithTime, { merge: true });
+        backupList.push(fullPostWithTime);
       }
     });
     const metaRef = doc(db, 'system_config', 'posts_seeded');
     batch.set(metaRef, { seeded: true, updatedAt: Date.now() });
     await batch.commit();
+
+    // SQLite Layer 2 Backup: Save Posts in bulk to local SQLite
+    if (backupList.length > 0) {
+      fetch('/api/backup/posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(backupList)
+      }).catch(err => console.warn('SQLite bulk posts backup sync failed:', err));
+    }
   } catch (e) {
     console.error('Error syncing posts to Firestore:', e);
   }
@@ -535,6 +567,10 @@ export async function deletePostFromFirestore(postId: string): Promise<void> {
     const postRef = doc(db, POSTS_COLLECTION, postId);
     await deleteDoc(postRef).catch(() => {});
 
+    // SQLite Layer 2 Backup: Delete post from local SQLite
+    fetch(`/api/backup/posts/${postId}`, { method: 'DELETE' })
+      .catch(err => console.warn('SQLite post delete sync failed:', err));
+
     // 2. Persist deleted post ID in system_config/deleted_posts
     const deletedDocRef = doc(db, 'system_config', 'deleted_posts');
     const snap = await getDoc(deletedDocRef).catch(() => null);
@@ -545,4 +581,93 @@ export async function deletePostFromFirestore(postId: string): Promise<void> {
   } catch (e) {
     console.warn('Error deleting post from Firestore (local removal preserved):', e);
   }
+}
+
+// SQLite Backup Layer Restoration APIs
+export async function getBackupPostsFromSQLite(): Promise<Post[]> {
+  try {
+    const res = await fetch('/api/backup/posts');
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (e) {
+    console.error('Failed to load posts from SQLite backup:', e);
+  }
+  return [];
+}
+
+export async function getBackupUsersFromSQLite(): Promise<SessionUser[]> {
+  try {
+    const res = await fetch('/api/backup/users');
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (e) {
+    console.error('Failed to load users from SQLite backup:', e);
+  }
+  return [];
+}
+
+// Background Back-Sync Throttling: Restore data back to Firestore in chunks with a rate-limit delay
+export async function restoreBackupsToFirestore(postsToSync: Post[], usersToSync: SessionUser[]): Promise<void> {
+  const CHUNK_SIZE = 5; // Process 5 records per batch
+  const DELAY_MS = 1000; // 1-second interval delay to respect Firestore rate limits and reduce Peak Write Ops
+  
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+  // 1. Throttled Restoration of Users
+  if (usersToSync && usersToSync.length > 0) {
+    console.log(`[SELF-HEALING] Beginning throttled back-sync for ${usersToSync.length} users...`);
+    for (let i = 0; i < usersToSync.length; i += CHUNK_SIZE) {
+      const chunk = usersToSync.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      
+      chunk.forEach(u => {
+        const uid = u.uid || u.username || u.id;
+        if (uid) {
+          const userRef = doc(db, 'registered_users', uid);
+          batch.set(userRef, u, { merge: true });
+        }
+      });
+      
+      await batch.commit().catch(err => {
+        console.error('[SELF-HEALING] Error restoring user batch:', err);
+      });
+      
+      console.log(`[SELF-HEALING] Restored user batch ${Math.floor(i / CHUNK_SIZE) + 1} / ${Math.ceil(usersToSync.length / CHUNK_SIZE)}`);
+      await sleep(DELAY_MS);
+    }
+  }
+
+  // 2. Throttled Restoration of Posts
+  if (postsToSync && postsToSync.length > 0) {
+    const deletedIds = getDeletedPostIds();
+    const activePosts = postsToSync.filter(p => p && p.id && !deletedIds.has(p.id));
+    
+    if (activePosts.length > 0) {
+      console.log(`[SELF-HEALING] Beginning throttled back-sync for ${activePosts.length} posts...`);
+      for (let i = 0; i < activePosts.length; i += CHUNK_SIZE) {
+        const chunk = activePosts.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+        
+        chunk.forEach(post => {
+          const postRef = doc(db, POSTS_COLLECTION, post.id);
+          const postData = sanitizeForFirestore(post);
+          batch.set(postRef, {
+            ...postData,
+            createdAtMs: (post as any).createdAtMs || Date.now()
+          }, { merge: true });
+        });
+        
+        await batch.commit().catch(err => {
+          console.error('[SELF-HEALING] Error restoring post batch:', err);
+        });
+        
+        console.log(`[SELF-HEALING] Restored post batch ${Math.floor(i / CHUNK_SIZE) + 1} / ${Math.ceil(activePosts.length / CHUNK_SIZE)}`);
+        await sleep(DELAY_MS);
+      }
+    }
+  }
+
+  console.log('[SELF-HEALING] Throttled backup restoration finished successfully!');
 }
