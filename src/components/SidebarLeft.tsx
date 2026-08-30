@@ -11,7 +11,6 @@ export function SidebarLeft({
   onOpenNotifications,
   onEditProfileClick,
   onViewProfile,
-  onLogoutClick,
   currentUser
 }: { 
   activeCategory: string;
@@ -20,7 +19,6 @@ export function SidebarLeft({
   onOpenNotifications?: () => void;
   onEditProfileClick?: () => void;
   onViewProfile?: (user: SessionUser) => void;
-  onLogoutClick?: () => void;
   currentUser?: SessionUser | null;
 }) {
   const badgeText = currentUser ? (currentUser.badge || formatUserBadge(currentUser)) : '';
@@ -87,24 +85,13 @@ export function SidebarLeft({
 
 
 
-            <div className="flex items-center space-x-2 mt-3">
-              <button
-                onClick={() => onViewProfile ? onViewProfile(currentUser) : onEditProfileClick?.()}
-                className="flex-1 py-1.5 px-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-xl text-[11px] font-semibold border border-gray-200/80 transition-colors flex items-center justify-center space-x-1 cursor-pointer"
-              >
-                <Icons.User className="w-3 h-3" />
-                <span>โปรไฟล์ฉัน</span>
-              </button>
-              
-              <button
-                onClick={onLogoutClick}
-                className="flex-1 py-1.5 px-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-[11px] font-semibold border border-red-100 transition-colors flex items-center justify-center space-x-1 cursor-pointer"
-                title="ออกจากระบบ"
-              >
-                <Icons.LogOut className="w-3 h-3" />
-                <span>ออกจากระบบ</span>
-              </button>
-            </div>
+            <button
+              onClick={() => onViewProfile ? onViewProfile(currentUser) : onEditProfileClick?.()}
+              className="mt-3 w-full py-1.5 px-2 bg-gray-50 hover:bg-red-50 hover:text-red-600 text-gray-600 rounded-xl text-[11px] font-semibold border border-gray-200/80 transition-colors flex items-center justify-center space-x-1 cursor-pointer"
+            >
+              <Icons.User className="w-3 h-3" />
+              <span>ดูโปรไฟล์และโพสต์ของฉัน</span>
+            </button>
 
             <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between text-[10px] text-gray-400">
               <span className="flex items-center">

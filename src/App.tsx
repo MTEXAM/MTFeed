@@ -487,7 +487,6 @@ export default function App() {
 
   const handleLogout = () => {
     setUser(null);
-    setShowWelcomeAlert(false);
     try {
       localStorage.removeItem('mtfeed_user');
       sessionStorage.removeItem('mtfeed_user');
@@ -824,7 +823,6 @@ export default function App() {
         onAdminClick={() => setIsAdminBoardOpen(true)}
         onEditProfileClick={() => user ? setIsEditProfileOpen(true) : window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')}
         onViewProfile={handleViewProfile}
-        onLogoutClick={handleLogout}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         unreadCount={unreadNotificationsCount}
@@ -843,7 +841,6 @@ export default function App() {
           onOpenNotifications={() => setIsNotificationsModalOpen(true)}
           onEditProfileClick={() => user ? setIsEditProfileOpen(true) : window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')}
           onViewProfile={handleViewProfile}
-          onLogoutClick={handleLogout}
           currentUser={user}
         />
         
