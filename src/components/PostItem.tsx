@@ -13,7 +13,8 @@ export function PostItem({
   onReport,
   user,
   onSelectTag,
-  onExternalLinkClick
+  onExternalLinkClick,
+  onProfileClick
 }: { 
   post: Post;
   onInteraction: (postId: string, type: 'reply' | 'repost' | 'like' | 'bookmark') => void;
@@ -24,6 +25,7 @@ export function PostItem({
   user: { username: string; isAdmin: boolean; needsAdminVerification?: boolean; uid?: string; id?: string; name?: string; avatar?: string } | null;
   onSelectTag?: (tag: string) => void;
   onExternalLinkClick?: (url: string) => void;
+  onProfileClick?: (user: any) => void;
 }) {
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
@@ -46,20 +48,34 @@ export function PostItem({
   const votedOptionId = post.userInteractions?.votedOptionId;
 
   const currentUser = user as any;
+  const authorName = post?.author?.name || post?.author?.username || 'ผู้ใช้งาน';
+  const authorUsername = post?.author?.username || '';
+  const authorAvatar = post?.author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(authorUsername || 'user')}&backgroundColor=cccccc`;
+  const authorId = post?.author?.id || (post?.author as any)?.uid || '';
+
   const isOwner = Boolean(currentUser && (
-    (currentUser.username && post.author.username && currentUser.username.replace(/^@/, '').toLowerCase() === post.author.username.replace(/^@/, '').toLowerCase()) ||
-    (currentUser.uid && post.author.id && currentUser.uid === post.author.id) ||
-    (currentUser.id && post.author.id && currentUser.id === post.author.id)
+    (currentUser.username && authorUsername && currentUser.username.replace(/^@/, '').toLowerCase() === authorUsername.replace(/^@/, '').toLowerCase()) ||
+    (currentUser.uid && authorId && currentUser.uid === authorId) ||
+    (currentUser.id && authorId && currentUser.id === authorId)
   ));
   const isVerifiedAdmin = Boolean(user?.isAdmin && !user?.needsAdminVerification);
   const canDelete = isVerifiedAdmin || isOwner;
   const canReport = Boolean(user && !isOwner && !isVerifiedAdmin);
 
+  const stats = {
+    replies: post?.stats?.replies || (Array.isArray(post?.comments) ? post.comments.length : 0),
+    reposts: post?.stats?.reposts || 0,
+    likes: post?.stats?.likes || 0,
+    bookmarks: post?.stats?.bookmarks || 0,
+  };
+
+  const tags = Array.isArray(post?.tags) ? post.tags : [];
+
   const handleShare = async () => {
     const shareData = {
-      title: 'MT Feed - ' + post.author.name,
-      text: post.content,
-      url: window.location.href, // In a real app this would be a specific post URL
+      title: 'MT Feed - ' + authorName,
+      text: post?.content || '',
+      url: window.location.href,
     };
     
     if (navigator.share) {
@@ -157,52 +173,67 @@ export function PostItem({
         <div className="flex space-x-3">
           <div className="flex-shrink-0">
             <img
-            className="h-10 w-10 rounded-full bg-gray-100 border border-gray-200"
-            src={post.author.avatar}
-            alt={post.author.name}
-          />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
-              {(() => {
-                const isAdminPost = post.author.isAdmin || post.author.badge === '👑 Admin';
-                if (isAdminPost) {
-                  const style = getBadgeStyle('👑 Admin');
+              onClick={() => onProfileClick?.(post.author || { username: authorUsername, name: authorName, avatar: authorAvatar })}
+              className="h-10 w-10 rounded-full bg-gray-100 border border-gray-200 object-cover cursor-pointer hover:opacity-85 hover:ring-2 hover:ring-red-400 transition-all"
+              src={authorAvatar}
+              alt={authorName}
+              title={`ดูโปรไฟล์ของ ${authorName}`}
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                {(() => {
+                  const isAdminPost = post.author?.isAdmin || post.author?.badge === '👑 Admin';
+                  if (isAdminPost) {
+                    const style = getBadgeStyle('👑 Admin');
+                    return (
+                      <button
+                        onClick={() => onProfileClick?.(post.author)}
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${style.bg} ${style.text} ${style.border} cursor-pointer hover:opacity-90 transition-opacity`}
+                        title="ดูโปรไฟล์ 👑 Admin"
+                      >
+                        👑 Admin
+                      </button>
+                    );
+                  }
                   return (
-                    <span 
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${style.bg} ${style.text} ${style.border}`}
-                      title="👑 Admin"
-                    >
-                      👑 Admin
-                    </span>
+                    <>
+                      <button
+                        onClick={() => onProfileClick?.(post.author)}
+                        className="text-sm font-bold text-gray-900 truncate hover:underline hover:text-red-600 transition-colors cursor-pointer text-left"
+                        title={`ดูโปรไฟล์ของ ${authorName}`}
+                      >
+                        {authorName}
+                      </button>
+                      {post.author?.badge && (
+                        (() => {
+                          const style = getBadgeStyle(post.author.badge);
+                          return (
+                            <button
+                              onClick={() => onProfileClick?.(post.author)}
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${style.bg} ${style.text} ${style.border} cursor-pointer hover:opacity-90 transition-opacity`}
+                              title={[post.author?.faculty, post.author?.university].filter(Boolean).join(' • ') || post.author?.badge}
+                            >
+                              {post.author.badge}
+                            </button>
+                          );
+                        })()
+                      )}
+                      {!post.isAnonymous && authorUsername && (
+                        <button
+                          onClick={() => onProfileClick?.(post.author)}
+                          className="text-xs text-gray-400 truncate hover:text-gray-600 hover:underline cursor-pointer"
+                        >
+                          @{authorUsername}
+                        </button>
+                      )}
+                    </>
                   );
-                }
-                return (
-                  <>
-                    <span className="text-sm font-bold text-gray-900 truncate">{post.author.name}</span>
-                    {post.author.badge && (
-                      (() => {
-                        const style = getBadgeStyle(post.author.badge);
-                        return (
-                          <span 
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${style.bg} ${style.text} ${style.border}`}
-                            title={[post.author.faculty, post.author.university].filter(Boolean).join(' • ') || post.author.badge}
-                          >
-                            {post.author.badge}
-                          </span>
-                        );
-                      })()
-                    )}
-                    {!post.isAnonymous && (
-                      <span className="text-xs text-gray-400 truncate">@{post.author.username}</span>
-                    )}
-                  </>
-                );
-              })()}
+                })()}
               <span className="text-xs text-gray-400">·</span>
-              <span className="text-xs text-gray-500" title={formatFullDateTime(post.createdAtMs)}>
-                {formatRelativeOrRealTime(post.createdAtMs, post.createdAt)}
+              <span className="text-xs text-gray-500" title={formatFullDateTime(post?.createdAtMs)}>
+                {formatRelativeOrRealTime(post?.createdAtMs, post?.createdAt)}
               </span>
             </div>
             {(canDelete || canReport) && (
@@ -238,7 +269,7 @@ export function PostItem({
           </div>
           
           <div className="mt-2 text-sm text-gray-900 whitespace-pre-wrap">
-            {renderContentWithLinks(post.content)}
+            {renderContentWithLinks(post?.content || '')}
           </div>
 
           {post.image && (
@@ -251,11 +282,11 @@ export function PostItem({
             </div>
           )}
 
-          {post.poll && (
+          {post.poll && Array.isArray(post.poll.options) && (
             <div className="mt-4 border border-gray-200 rounded-xl p-4">
               <div className="space-y-3">
                 {post.poll.options.map((option) => {
-                  const percentage = post.poll!.totalVotes > 0 ? Math.round((option.votes / post.poll!.totalVotes) * 100) : 0;
+                  const percentage = (post.poll?.totalVotes || 0) > 0 ? Math.round((option.votes / post.poll!.totalVotes) * 100) : 0;
                   const isVoted = votedOptionId === option.id;
                   
                   return (
@@ -279,16 +310,16 @@ export function PostItem({
                 })}
               </div>
               <div className="mt-3 text-xs text-gray-500 flex items-center">
-                <span>{post.poll.totalVotes} โหวต</span>
+                <span>{post.poll.totalVotes || 0} โหวต</span>
                 <span className="mx-1">·</span>
-                <span>{post.poll.expiresAt}</span>
+                <span>{post.poll.expiresAt || ''}</span>
               </div>
             </div>
           )}
 
-          {post.tags.length > 0 && (
+          {tags.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {post.tags.map((tag) => (
+              {tags.map((tag) => (
                 <button 
                   key={tag} 
                   onClick={(e) => {
@@ -311,7 +342,7 @@ export function PostItem({
               <div className={`p-2 rounded-full transition-colors ${showComments ? 'bg-gray-100' : 'group-hover:bg-gray-100 group-hover:text-gray-900'}`}>
                 <MessageCircle className="w-5 h-5" fill={showComments ? "currentColor" : "none"} />
               </div>
-              <span className={`text-xs transition-colors ${showComments ? '' : 'group-hover:text-gray-900'}`}>{post.stats.replies}</span>
+              <span className={`text-xs transition-colors ${showComments ? '' : 'group-hover:text-gray-900'}`}>{stats.replies}</span>
             </button>
             <button 
               onClick={() => onInteraction(post.id, 'repost')}
@@ -320,7 +351,7 @@ export function PostItem({
               <div className={`p-2 rounded-full transition-colors ${isReposted ? 'bg-green-50' : 'group-hover:bg-green-50 group-hover:text-green-600'}`}>
                 <Repeat2 className="w-5 h-5" />
               </div>
-              <span className={`text-xs transition-colors ${isReposted ? '' : 'group-hover:text-green-600'}`}>{post.stats.reposts}</span>
+              <span className={`text-xs transition-colors ${isReposted ? '' : 'group-hover:text-green-600'}`}>{stats.reposts}</span>
             </button>
             <button 
               onClick={() => onInteraction(post.id, 'like')}
@@ -329,7 +360,7 @@ export function PostItem({
               <div className={`p-2 rounded-full transition-colors ${isLiked ? 'bg-red-50' : 'group-hover:bg-red-50 group-hover:text-red-600'}`}>
                 <Heart className="w-5 h-5" fill={isLiked ? "currentColor" : "none"} />
               </div>
-              <span className={`text-xs transition-colors ${isLiked ? '' : 'group-hover:text-red-600'}`}>{post.stats.likes}</span>
+              <span className={`text-xs transition-colors ${isLiked ? '' : 'group-hover:text-red-600'}`}>{stats.likes}</span>
             </button>
             <button 
               onClick={() => onInteraction(post.id, 'bookmark')}
@@ -338,7 +369,7 @@ export function PostItem({
               <div className={`p-2 rounded-full transition-colors ${isBookmarked ? 'bg-gray-100' : 'group-hover:bg-gray-100 group-hover:text-gray-900'}`}>
                 <Bookmark className="w-5 h-5" fill={isBookmarked ? "currentColor" : "none"} />
               </div>
-              <span className={`text-xs transition-colors ${isBookmarked ? '' : 'group-hover:text-gray-900'}`}>{post.stats.bookmarks}</span>
+              <span className={`text-xs transition-colors ${isBookmarked ? '' : 'group-hover:text-gray-900'}`}>{stats.bookmarks}</span>
             </button>
             <button 
               onClick={handleShare}
@@ -352,56 +383,79 @@ export function PostItem({
 
           {showComments && (
             <div className="mt-4 pt-4 border-t border-gray-100">
-              {post.comments && post.comments.length > 0 && (
+              {Array.isArray(post.comments) && post.comments.length > 0 && (
                 <div className="space-y-4 mb-4">
-                  {post.comments.map((comment) => (
-                    <div key={comment.id} className="flex space-x-3">
-                      <div className="flex-shrink-0">
-                        <img className="h-8 w-8 rounded-full bg-gray-100 border border-gray-200" src={comment.author.avatar} alt={comment.author.name} />
-                      </div>
-                      <div className="min-w-0 flex-1 bg-gray-50 rounded-2xl px-4 py-2">
-                        <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                          {(() => {
-                            const isAdminComment = comment.author.isAdmin || comment.author.badge === '👑 Admin';
-                            if (isAdminComment) {
-                              const style = getBadgeStyle('👑 Admin');
-                              return (
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${style.bg} ${style.text} ${style.border}`}>
-                                  👑 Admin
-                                </span>
-                              );
-                            }
-                            return (
-                              <>
-                                <span className="text-sm font-bold text-gray-900">{comment.author.name}</span>
-                                {comment.author.badge && (
-                                  (() => {
-                                    const style = getBadgeStyle(comment.author.badge);
-                                    return (
-                                      <span className={`inline-flex items-center px-1.5 py-0.2 rounded-full text-[10px] font-bold border ${style.bg} ${style.text} ${style.border}`}>
-                                        {comment.author.badge}
-                                      </span>
-                                    );
-                                  })()
-                                )}
-                              </>
-                            );
-                          })()}
-                          <span className="text-xs text-gray-400" title={formatFullDateTime(comment.createdAtMs)}>
-                            {formatRelativeOrRealTime(comment.createdAtMs, comment.createdAt)}
-                          </span>
+                  {post.comments.map((comment) => {
+                    const cAuthorName = comment?.author?.name || comment?.author?.username || 'ผู้ใช้งาน';
+                    const cAuthorUsername = comment?.author?.username || '';
+                    const cAuthorAvatar = comment?.author?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cAuthorUsername || 'user')}&backgroundColor=cccccc`;
+
+                    return (
+                      <div key={comment.id} className="flex space-x-3">
+                        <div className="flex-shrink-0">
+                          <img 
+                            onClick={() => onProfileClick?.(comment.author)}
+                            className="h-8 w-8 rounded-full bg-gray-100 border border-gray-200 object-cover cursor-pointer hover:opacity-85 hover:ring-1 hover:ring-red-400 transition-all" 
+                            src={cAuthorAvatar} 
+                            alt={cAuthorName} 
+                            title={`ดูโปรไฟล์ของ ${cAuthorName}`}
+                          />
                         </div>
-                        <p className="text-sm text-gray-800 mt-0.5 whitespace-pre-wrap">{renderContentWithLinks(comment.content)}</p>
+                        <div className="min-w-0 flex-1 bg-gray-50 rounded-2xl px-4 py-2">
+                          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                            {(() => {
+                              const isAdminComment = comment.author?.isAdmin || comment.author?.badge === '👑 Admin';
+                              if (isAdminComment) {
+                                const style = getBadgeStyle('👑 Admin');
+                                return (
+                                  <button 
+                                    onClick={() => onProfileClick?.(comment.author)}
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${style.bg} ${style.text} ${style.border} cursor-pointer hover:opacity-90`}
+                                  >
+                                    👑 Admin
+                                  </button>
+                                );
+                              }
+                              return (
+                                <>
+                                  <button 
+                                    onClick={() => onProfileClick?.(comment.author)}
+                                    className="text-sm font-bold text-gray-900 hover:underline hover:text-red-600 cursor-pointer text-left"
+                                  >
+                                    {cAuthorName}
+                                  </button>
+                                  {comment.author?.badge && (
+                                    (() => {
+                                      const style = getBadgeStyle(comment.author.badge);
+                                      return (
+                                        <button 
+                                          onClick={() => onProfileClick?.(comment.author)}
+                                          className={`inline-flex items-center px-1.5 py-0.2 rounded-full text-[10px] font-bold border ${style.bg} ${style.text} ${style.border} cursor-pointer hover:opacity-90`}
+                                        >
+                                          {comment.author.badge}
+                                        </button>
+                                      );
+                                    })()
+                                  )}
+                                </>
+                              );
+                            })()}
+                            <span className="text-xs text-gray-400" title={formatFullDateTime(comment?.createdAtMs)}>
+                              {formatRelativeOrRealTime(comment?.createdAtMs, comment?.createdAt)}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-800 mt-0.5 whitespace-pre-wrap">{renderContentWithLinks(comment?.content || '')}</p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
               
               {user ? (
                 <form onSubmit={submitComment} className="flex items-start space-x-3 mt-4">
                   <div className="flex-shrink-0">
-                    <img className="h-8 w-8 rounded-full bg-gray-100 border border-gray-200" src={user.isAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}&backgroundColor=cccccc`} alt={user.username} />
+                    <img className="h-8 w-8 rounded-full bg-gray-100 border border-gray-200" src={user.avatar || (user.isAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.username || 'user')}&backgroundColor=cccccc`)} alt={user.username || 'user'} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="relative">

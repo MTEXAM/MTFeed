@@ -8,13 +8,15 @@ export function PostComposer({
   user,
   externalSharedText,
   onClearExternalSharedText,
-  registeredUsers = []
+  registeredUsers = [],
+  onLoginClick
 }: { 
   onPost: (content: string, isAnonymous: boolean, image?: string, poll?: { options: { id: string, text: string, votes: number }[], expiresAt: string, totalVotes: number }) => void;
   user?: SessionUser | null;
   externalSharedText?: string | null;
   onClearExternalSharedText?: () => void;
   registeredUsers?: SessionUser[];
+  onLoginClick?: () => void;
 }) {
   const [content, setContent] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(false);
@@ -109,15 +111,23 @@ export function PostComposer({
 
   if (!user) {
     return (
-      <div className="px-4 py-6 sm:px-6 border-b border-gray-200 bg-amber-50/40">
-        <div className="text-center py-3">
-          <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-amber-100 text-amber-700 mb-2 font-bold text-sm">
-            🔒
+      <div className="px-4 py-5 sm:px-6 border-b border-gray-200 bg-amber-50/50">
+        <div className="text-center py-2 max-w-lg mx-auto">
+          <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-amber-100 text-amber-700 mb-2 text-base">
+            👋
           </div>
-          <h3 className="text-sm font-bold text-gray-800">โหมดอ่านอย่างเดียว (Read-Only Mode)</h3>
-          <p className="text-xs text-gray-600 mt-1 max-w-md mx-auto leading-relaxed">
-            คุณเข้าใช้งานแบบทั่วไป (ไม่ได้เข้าผ่านลิงก์เชื่อมโยงระบบ) สามารถอ่านโพสต์ ค้นหา และดูเนื้อหาได้ตามปกติ แต่หากต้องการสร้างโพสต์ กรุณาเข้าสู่ระบบผ่านลิงก์เชื่อมโยงจาก MTExam เท่านั้น
+          <h3 className="text-sm font-bold text-gray-800">เข้าสู่ระบบเพื่อเริ่มโพสต์และพูดคุยกับเพื่อนๆ</h3>
+          <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+            สามารถเข้าสู่ระบบด่วนด้วยชื่อผู้ใช้ใดก็ได้ หรือเข้าผ่านลิงก์เชื่อมต่อจาก MTExam เพื่อซิงค์รหัส 8 หลักอัตโนมัติ
           </p>
+          <button
+            type="button"
+            onClick={onLoginClick}
+            className="mt-3 inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
+          >
+            <AtSign className="w-3.5 h-3.5 mr-1.5" />
+            <span>เข้าสู่ระบบ / เลือกบัญชี</span>
+          </button>
         </div>
       </div>
     );

@@ -302,41 +302,40 @@ export function resolveUserAccount(params: {
   const cleanUsername = rawUsername.replace(/^@/, '');
   const lowerUsername = cleanUsername.toLowerCase();
   
-  // 1. If explicit 8-char UID passed from exam web
+  // 1. If explicit UID passed from URL/client
   let uid = '';
-  if (params.uidParam && params.uidParam.trim().length >= 4) {
-    uid = params.uidParam.trim().toUpperCase().slice(0, 8);
+  if (params.uidParam && params.uidParam.trim().length >= 3) {
+    uid = params.uidParam.trim().toUpperCase().slice(0, 16);
   }
 
-  // --- Strict admin checking rule based on user instructions ---
-  // Entering with "?username=bank&uid=MED68001&role=admin" is the ONLY admin!
-  // Any other user, even if they have uid=MED68001, is a standard member!
-  const isTargetAdminLink = 
-    lowerUsername === 'bank' && 
-    uid === 'MED68001' && 
-    (params.role === 'admin' || params.role === 'true' || params.role === '1');
+  // --- Strict Role Security Check ---
+  // 1. ตรวจสอบค่า role จาก URL parameter
+  const rawRole = (params.role || '').toLowerCase().trim();
+  const isRequestingAdmin = rawRole === 'admin' || rawRole === 'true' || rawRole === '1';
 
-  // Let's determine final UID:
-  // If the username is 'bank' and they are the target admin, they use MED68001 (or BANK2026). Let's use MED68001 as their actual UID so it matches!
-  const finalUid = lowerUsername === 'bank' ? 'MED68001' : (uid || generateHash8(cleanUsername + '_mt'));
+  // 2. เฉพาะกรณีที่ uid === "MED68001" เท่านั้นที่จะยอมรับสิทธิ์ให้เป็น "admin" ได้
+  const isValidAdminUid = uid === 'MED68001';
+
+  // 3. หากส่ง role=admin มาแต่ uid ไม่ใช่ "MED68001" ให้ทำการดาวน์เกรดเป็นผู้ใช้ทั่วไปทันที
+  let validatedRole = 'user';
+  let isAdmin = false;
+
+  if (isRequestingAdmin && isValidAdminUid) {
+    validatedRole = 'admin';
+    isAdmin = true;
+  } else {
+    // Downgraded or standard user
+    validatedRole = 'user';
+    isAdmin = false;
+  }
+
+  // กำหนดค่า UID ขั้นสุดท้าย
+  const finalUid = uid || (cleanUsername ? generateHash8(cleanUsername + '_mt') : generateRandomUid8());
 
   const registry = getRegisteredUsers();
   const existingUser = registry[finalUid] || findUserByUsername(cleanUsername);
 
-  // Determine if this is the real admin
-  const isRealAdmin = (lowerUsername === 'bank' && finalUid === 'MED68001') || 
-                      (lowerUsername === 'admin_master' && finalUid === 'BANK2026');
-
-  let isAdmin = false;
   let needsAdminVerification = false;
-
-  if (isRealAdmin) {
-    isAdmin = true;
-    needsAdminVerification = false; // No password verification ever needed for the real admin!
-  } else {
-    isAdmin = false;
-    needsAdminVerification = false;
-  }
 
   let userGroup = params.userGroupParam ? decodeURIComponent(params.userGroupParam).trim() : undefined;
   let academicYear = params.academicYearParam ? decodeURIComponent(params.academicYearParam).trim() : undefined;
@@ -344,7 +343,7 @@ export function resolveUserAccount(params: {
   const university = params.universityParam ? decodeURIComponent(params.universityParam).trim() : undefined;
 
   // Sanitize non-admins: if someone else has "Admin" or "ผู้ดูแลระบบ" in group, reset it
-  if (!isRealAdmin) {
+  if (!isAdmin) {
     if (userGroup && (userGroup.toLowerCase().includes('admin') || userGroup.includes('ผู้ดูแลระบบ'))) {
       userGroup = '🔬🎓 นศ.เทคนิคการแพทย์';
     }

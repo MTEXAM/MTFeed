@@ -83,6 +83,13 @@ export interface Post {
     bookmarked?: boolean;
     votedOptionId?: string;
   };
+  repostedBy?: string[];
+  repostedUsers?: {
+    username: string;
+    name?: string;
+    avatar?: string;
+    uid?: string;
+  }[];
   comments?: Comment[];
   isReported?: boolean;
 }

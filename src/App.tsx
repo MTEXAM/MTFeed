@@ -9,21 +9,26 @@ import { NotificationsModal } from './components/NotificationsModal';
 import { AdminBoardModal } from './components/AdminBoardModal';
 import { ExternalLinkModal } from './components/ExternalLinkModal';
 import { AdminPasswordModal } from './components/AdminPasswordModal';
+import { EditProfileModal } from './components/EditProfileModal';
+import { UserProfileModal } from './components/UserProfileModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
-import { SessionUser, AppNotification, Post } from './types';
-import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid } from './utils/auth';
-import { subscribeToPosts, subscribeToUsers, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, markPostAsDeletedLocally, mergePostsLists } from './utils/firestoreService';
+import { SessionUser, AppNotification, Post, User } from './types';
+import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid, formatUserBadge } from './utils/auth';
+import { subscribeToPosts, subscribeToUsers, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore } from './utils/firestoreService';
 import { formatRealTime } from './utils/timeUtils';
 import { INITIAL_POSTS } from './data';
 
-// Helper function to extract user from URL search params, hash, or session
+// Helper function to extract user from URL search params, hash, or sessionStorage
 function getInitialUser(): SessionUser | null {
   try {
     let params: URLSearchParams | null = null;
-    if (window.location.search) {
-      params = new URLSearchParams(window.location.search);
-    } else if (window.location.hash && window.location.hash.includes('?')) {
-      params = new URLSearchParams(window.location.hash.split('?')[1]);
+    if (typeof window !== 'undefined') {
+      if (window.location.search) {
+        params = new URLSearchParams(window.location.search);
+      } else if (window.location.hash && window.location.hash.includes('?')) {
+        params = new URLSearchParams(window.location.hash.split('?')[1]);
+      }
     }
 
     if (params) {
@@ -37,9 +42,9 @@ function getInitialUser(): SessionUser | null {
       const facultyParam = params.get('faculty') || params.get('fac') || params.get('department');
       const universityParam = params.get('university') || params.get('uni') || params.get('u_name') || params.get('institution') || params.get('school');
 
-      if (usernameParam) {
+      if (usernameParam || uidParam) {
         const autoUser = resolveUserAccount({
-          username: usernameParam,
+          username: usernameParam || uidParam || 'user',
           uidParam,
           displayName: displayNameParam,
           avatar: avatarParam,
@@ -50,21 +55,40 @@ function getInitialUser(): SessionUser | null {
           universityParam
         });
 
+        // 1. บันทึกลงใน sessionStorage
         try {
+          sessionStorage.setItem('mtfeed_user', JSON.stringify(autoUser));
           localStorage.setItem('mtfeed_user', JSON.stringify(autoUser));
-          sessionStorage.setItem('mtfeed_entered_via_link', 'true');
         } catch (e) {
           console.error('Error saving user to storage:', e);
+        }
+
+        // 2. ลบ Query Parameters ทั้งหมดออกจาก URL ทันที
+        try {
+          if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
+            const cleanUrl = window.location.pathname + (window.location.hash ? window.location.hash.split('?')[0] : '');
+            window.history.replaceState({}, document.title, cleanUrl);
+          }
+        } catch (e) {
+          console.error('Error clearing URL parameters:', e);
         }
 
         return autoUser;
       }
     }
 
-    // If not in URL query, load saved user session from localStorage
-    const savedUser = localStorage.getItem('mtfeed_user');
-    if (savedUser) {
-      return JSON.parse(savedUser);
+    // 3. ถ้าไม่มีใน URL ให้อ่านจาก sessionStorage (หรือ localStorage fallback)
+    if (typeof window !== 'undefined') {
+      const sessionData = sessionStorage.getItem('mtfeed_user');
+      if (sessionData) {
+        return JSON.parse(sessionData);
+      }
+      const localData = localStorage.getItem('mtfeed_user');
+      if (localData) {
+        const parsed = JSON.parse(localData);
+        sessionStorage.setItem('mtfeed_user', localData);
+        return parsed;
+      }
     }
   } catch (e) {
     console.error('Error parsing initial user:', e);
@@ -76,9 +100,11 @@ export default function App() {
   const [activeCategory, setActiveCategory] = useState('all');
   const [externalSharedText, setExternalSharedText] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isAdminBoardOpen, setIsAdminBoardOpen] = useState(false);
   const [isOnlineModalOpen, setIsOnlineModalOpen] = useState(false);
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
+  const [viewingProfileUser, setViewingProfileUser] = useState<SessionUser | User | null>(null);
   const [pendingExternalUrl, setPendingExternalUrl] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -295,19 +321,88 @@ export default function App() {
     }
   }, []);
 
-  const handleLogin = (username: string, isAdmin: boolean, verifiedAdmin?: boolean) => {
+  const handleLogin = (username: string, isAdmin: boolean, verifiedAdmin?: boolean, avatar?: string, displayName?: string) => {
     const userData = resolveUserAccount({
       username,
+      displayName,
+      avatar,
       role: isAdmin ? 'admin' : undefined,
       verifiedAdmin
     });
     setUser(userData);
+    saveRegisteredUser(userData);
+    saveUserToFirestore(userData);
     setRegisteredUsers(getAllRegisteredUsersList());
     try {
       localStorage.setItem('mtfeed_user', JSON.stringify(userData));
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const handleSaveProfile = (updatedData: Partial<SessionUser>) => {
+    if (!user) return;
+    const updatedUser: SessionUser = {
+      ...user,
+      ...updatedData
+    };
+    setUser(updatedUser);
+    saveRegisteredUser(updatedUser);
+    saveUserToFirestore(updatedUser);
+    try {
+      localStorage.setItem('mtfeed_user', JSON.stringify(updatedUser));
+    } catch (e) {}
+
+    // Update registeredUsers list in state
+    setRegisteredUsers(getAllRegisteredUsersList());
+
+    // Also update existing posts & comments in memory so avatar/name changes reflect immediately
+    setPosts(prevPosts => {
+      const updated = prevPosts.map(p => {
+        const isAuthor = (
+          (p.author.username && user.username && p.author.username.replace(/^@/, '').toLowerCase() === user.username.replace(/^@/, '').toLowerCase()) ||
+          (p.author.id && user.uid && p.author.id === user.uid)
+        );
+        let postChanged = false;
+        let newAuthor = p.author;
+        if (isAuthor) {
+          postChanged = true;
+          newAuthor = {
+            ...p.author,
+            name: updatedUser.name || p.author.name,
+            avatar: updatedUser.avatar || p.author.avatar
+          };
+        }
+        const updatedComments = (p.comments || []).map(c => {
+          const isCommentAuthor = (
+            (c.author.username && user.username && c.author.username.replace(/^@/, '').toLowerCase() === user.username.replace(/^@/, '').toLowerCase()) ||
+            (c.author.id && user.uid && c.author.id === user.uid)
+          );
+          if (isCommentAuthor) {
+            postChanged = true;
+            return {
+              ...c,
+              author: {
+                ...c.author,
+                name: updatedUser.name || c.author.name,
+                avatar: updatedUser.avatar || c.author.avatar
+              }
+            };
+          }
+          return c;
+        });
+
+        if (postChanged) {
+          return {
+            ...p,
+            author: newAuthor,
+            comments: updatedComments
+          };
+        }
+        return p;
+      });
+      return updated;
+    });
   };
 
   const handleOpenExternalUrl = (url: string) => {
@@ -443,6 +538,159 @@ export default function App() {
     }
   };
 
+  const handleInteraction = (postId: string, type: 'reply' | 'repost' | 'like' | 'bookmark') => {
+    if (!user && type !== 'reply') {
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    const targetPost = posts.find(p => p.id === postId);
+    if (targetPost) {
+      const newStats = { ...targetPost.stats };
+      const newInteractions = { ...(targetPost.userInteractions || {}) };
+      let newRepostedBy = [...(targetPost.repostedBy || [])];
+      let newRepostedUsers = [...(targetPost.repostedUsers || [])];
+
+      if (type === 'like') {
+        const currentlyLiked = newInteractions.liked;
+        newInteractions.liked = !currentlyLiked;
+        newStats.likes += currentlyLiked ? -1 : 1;
+      } else if (type === 'repost') {
+        const currentlyReposted = newInteractions.reposted;
+        newInteractions.reposted = !currentlyReposted;
+        newStats.reposts += currentlyReposted ? -1 : 1;
+
+        if (user) {
+          const username = user.username;
+          if (newInteractions.reposted) {
+            if (!newRepostedBy.includes(username)) {
+              newRepostedBy.push(username);
+            }
+            if (!newRepostedUsers.some(u => u.username === username)) {
+              newRepostedUsers.push({
+                username: user.username,
+                name: user.name || user.username,
+                avatar: user.avatar,
+                uid: user.uid
+              });
+            }
+          } else {
+            newRepostedBy = newRepostedBy.filter(u => u !== username);
+            newRepostedUsers = newRepostedUsers.filter(u => u.username !== username);
+          }
+        }
+      } else if (type === 'bookmark') {
+        const currentlyBookmarked = newInteractions.bookmarked;
+        newInteractions.bookmarked = !currentlyBookmarked;
+        newStats.bookmarks += currentlyBookmarked ? -1 : 1;
+      }
+
+      const updatedPost: Post = {
+        ...targetPost,
+        stats: newStats,
+        userInteractions: newInteractions,
+        repostedBy: newRepostedBy,
+        repostedUsers: newRepostedUsers
+      };
+
+      setPosts(prev => prev.map(p => p.id === postId ? updatedPost : p));
+      savePostToFirestore(updatedPost);
+    }
+  };
+
+  const handleVote = (postId: string, optionId: string) => {
+    if (!user) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    const targetPost = posts.find(p => p.id === postId);
+    if (targetPost && targetPost.poll && !targetPost.userInteractions?.votedOptionId) {
+      const newPoll = { ...targetPost.poll };
+      newPoll.options = newPoll.options.map(opt => {
+        if (opt.id === optionId) {
+          return { ...opt, votes: opt.votes + 1 };
+        }
+        return opt;
+      });
+      newPoll.totalVotes += 1;
+
+      const newInteractions = {
+        ...(targetPost.userInteractions || {}),
+        votedOptionId: optionId
+      };
+
+      const updatedPost: Post = {
+        ...targetPost,
+        poll: newPoll,
+        userInteractions: newInteractions
+      };
+
+      setPosts(prev => prev.map(p => p.id === postId ? updatedPost : p));
+      savePostToFirestore(updatedPost);
+    }
+  };
+
+  const handleComment = (postId: string, content: string) => {
+    if (!user) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    const nowMs = Date.now();
+    const newComment = {
+      id: `comment_${nowMs}_${Math.random().toString(36).substr(2, 5)}`,
+      author: {
+        id: user.uid,
+        name: user.name || user.username,
+        username: user.username,
+        avatar: user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.username)}&backgroundColor=cccccc`,
+        isVerified: user.isAdmin,
+        isAdmin: user.isAdmin,
+        badge: user.badge || formatUserBadge(user),
+        faculty: user.faculty,
+        university: user.university
+      },
+      content,
+      createdAt: formatRealTime(nowMs),
+      createdAtMs: nowMs,
+      likes: 0
+    };
+
+    const targetPost = posts.find(p => p.id === postId);
+    if (targetPost) {
+      const updatedComments = [...(targetPost.comments || []), newComment];
+      const newStats = {
+        ...targetPost.stats,
+        replies: updatedComments.length
+      };
+
+      const updatedPost: Post = {
+        ...targetPost,
+        comments: updatedComments,
+        stats: newStats
+      };
+
+      setPosts(prev => prev.map(p => p.id === postId ? updatedPost : p));
+      savePostToFirestore(updatedPost);
+    }
+  };
+
+  const handleViewProfile = (userToView: SessionUser | User) => {
+    const lookupKey = (userToView.username || '').replace(/^@/, '').toLowerCase();
+    const lookupUid = (userToView as SessionUser).uid || userToView.id;
+    const foundInRegistry = registeredUsers.find(u => 
+      (u.username && u.username.replace(/^@/, '').toLowerCase() === lookupKey) ||
+      (lookupUid && u.uid === lookupUid)
+    );
+
+    if (foundInRegistry) {
+      setViewingProfileUser(foundInRegistry);
+    } else {
+      setViewingProfileUser(userToView);
+    }
+  };
+
   // Notifications relevant for current user:
   // - System notifications (no recipientUsername)
   // - OR notifications specifically targeting admin (if user is admin)
@@ -458,6 +706,24 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-white">
+      {/* Banner if no session found */}
+      {!user && (
+        <div className="bg-amber-500 text-white px-4 py-2.5 shadow-md flex items-center justify-between text-sm sticky top-0 z-50">
+          <div className="flex items-center space-x-2 max-w-5xl mx-auto flex-1">
+            <span className="font-semibold text-base">⚠️</span>
+            <span className="font-medium">
+              ไม่พบข้อมูลการเข้าใช้งาน กรุณาเข้าสู่ระบบผ่านเว็บทำข้อสอบอีกครั้ง หรือกดเข้าสู่ระบบด้วยรหัส UID
+            </span>
+          </div>
+          <button 
+            onClick={() => setIsAuthModalOpen(true)}
+            className="px-3 py-1 bg-white text-amber-900 rounded-lg text-xs font-semibold hover:bg-amber-50 transition-colors shadow-sm ml-2 flex-shrink-0"
+          >
+            เข้าสู่ระบบ
+          </button>
+        </div>
+      )}
+
       {/* Welcome Banner when connected */}
       {showWelcomeAlert && user && (
         <div className="bg-gradient-to-r from-red-600 via-rose-600 to-orange-500 text-white px-4 py-2.5 shadow-md flex items-center justify-between text-sm sticky top-0 z-50 animate-fadeIn">
@@ -482,6 +748,8 @@ export default function App() {
         user={user} 
         onLoginClick={() => setIsAuthModalOpen(true)} 
         onAdminClick={() => setIsAdminBoardOpen(true)}
+        onEditProfileClick={() => user ? setIsEditProfileOpen(true) : setIsAuthModalOpen(true)}
+        onViewProfile={handleViewProfile}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         unreadCount={unreadNotificationsCount}
@@ -498,6 +766,8 @@ export default function App() {
           }}
           unreadCount={unreadNotificationsCount}
           onOpenNotifications={() => setIsNotificationsModalOpen(true)}
+          onEditProfileClick={() => user ? setIsEditProfileOpen(true) : setIsAuthModalOpen(true)}
+          onViewProfile={handleViewProfile}
           currentUser={user}
         />
         
@@ -519,6 +789,7 @@ export default function App() {
           onMention={handleMentionNotification}
           onExternalLinkClick={handleOpenExternalUrl}
           onReportPost={handleReportPost}
+          onProfileClick={handleViewProfile}
         />
         
         <SidebarRight 
@@ -571,11 +842,19 @@ export default function App() {
             </span>
           </button>
           <button 
-            onClick={() => !user ? setIsAuthModalOpen(true) : undefined} 
+            onClick={() => user ? handleViewProfile(user) : setIsAuthModalOpen(true)} 
             className="p-2 text-gray-500 hover:text-gray-900 transition-colors flex flex-col items-center"
-            title={user ? `@${user.username}` : "เข้าสู่ระบบ"}
+            title={user ? `@${user.username} (ดูโปรไฟล์และโพสต์)` : "เข้าสู่ระบบ"}
           >
-            <UserIcon className={`w-6 h-6 ${user ? 'text-red-600' : ''}`} />
+            {user?.avatar ? (
+              <img 
+                src={user.avatar} 
+                alt="Profile" 
+                className="w-6 h-6 rounded-full object-cover ring-2 ring-red-500" 
+              />
+            ) : (
+              <UserIcon className={`w-6 h-6 ${user ? 'text-red-600' : ''}`} />
+            )}
           </button>
         </div>
       </div>
@@ -595,6 +874,47 @@ export default function App() {
         onClose={() => setIsAuthModalOpen(false)} 
         onLogin={handleLogin}
       />
+
+      <EditProfileModal
+        isOpen={isEditProfileOpen}
+        onClose={() => setIsEditProfileOpen(false)}
+        currentUser={user}
+        onSaveProfile={handleSaveProfile}
+      />
+
+      <ErrorBoundary 
+        fallbackTitle="เกิดข้อผิดพลาดในการเปิดหน้าโปรไฟล์" 
+        onReset={() => setViewingProfileUser(null)}
+      >
+        <UserProfileModal
+          isOpen={!!viewingProfileUser}
+          onClose={() => setViewingProfileUser(null)}
+          targetUser={viewingProfileUser}
+          currentUser={user}
+          allPosts={posts}
+          onInteraction={handleInteraction}
+          onVote={handleVote}
+          onComment={handleComment}
+          onDelete={handleDeletePost}
+          onReport={handleReportPost}
+          onSelectTag={(tag) => {
+            setSelectedTag(tag);
+            setViewingProfileUser(null);
+          }}
+          onExternalLinkClick={handleOpenExternalUrl}
+          onEditProfileClick={() => {
+            setViewingProfileUser(null);
+            setIsEditProfileOpen(true);
+          }}
+          onMentionUserInPost={(mention) => {
+            setExternalSharedText(mention + ' ');
+            setViewingProfileUser(null);
+          }}
+          onSelectAnotherProfile={(otherUser) => {
+            handleViewProfile(otherUser);
+          }}
+        />
+      </ErrorBoundary>
 
       <OnlineMembersModal 
         isOpen={isOnlineModalOpen}
@@ -616,6 +936,10 @@ export default function App() {
         }}
         onSelectUserForPost={(mention) => {
           setExternalSharedText(mention);
+        }}
+        onViewProfile={(member) => {
+          setIsOnlineModalOpen(false);
+          handleViewProfile(member);
         }}
       />
 

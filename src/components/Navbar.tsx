@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookA, MessageSquare, Bell, Search, Settings, User, Shield, Award } from 'lucide-react';
+import { BookA, MessageSquare, Bell, Search, Settings, User, Shield, Award, Camera, Edit3 } from 'lucide-react';
 import { SessionUser } from '../types';
 import { getBadgeStyle, formatUserBadge, maskUid } from '../utils/auth';
 
@@ -7,6 +7,8 @@ export function Navbar({
   user, 
   onLoginClick, 
   onAdminClick,
+  onEditProfileClick,
+  onViewProfile,
   searchQuery,
   onSearchChange,
   unreadCount = 0,
@@ -16,6 +18,8 @@ export function Navbar({
   user: SessionUser | null;
   onLoginClick: () => void;
   onAdminClick?: () => void;
+  onEditProfileClick?: () => void;
+  onViewProfile?: (user: SessionUser) => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
   unreadCount?: number;
@@ -104,12 +108,21 @@ export function Navbar({
             {user ? (
               <>
                 <div className="relative flex-shrink-0 group">
-                  <button className="bg-white rounded-full flex items-center space-x-2 text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-600 p-1 hover:bg-gray-50 transition-colors">
-                    <img 
-                      className="h-8 w-8 rounded-full bg-gray-100 border border-gray-200 object-cover" 
-                      src={user.avatar || (user.isAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.username)}&backgroundColor=cccccc`)} 
-                      alt="Profile" 
-                    />
+                  <button 
+                    onClick={onEditProfileClick}
+                    className="bg-white rounded-full flex items-center space-x-2 text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-600 p-1 hover:bg-gray-50 transition-colors cursor-pointer"
+                    title="คลิกเพื่อแก้ไขโปรไฟล์ / รูปโปรไฟล์"
+                  >
+                    <div className="relative">
+                      <img 
+                        className="h-8 w-8 rounded-full bg-gray-100 border border-gray-200 object-cover" 
+                        src={user.avatar || (user.isAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.username)}&backgroundColor=cccccc`)} 
+                        alt="Profile" 
+                      />
+                      <span className="absolute -bottom-0.5 -right-0.5 bg-red-600 text-white p-0.5 rounded-full ring-1 ring-white">
+                        <Camera className="w-2 h-2" />
+                      </span>
+                    </div>
                     <div className="hidden md:flex flex-col text-left">
                       <span className="font-semibold text-xs text-gray-800 max-w-[100px] truncate leading-tight">
                         {user.name || user.username}
@@ -124,14 +137,27 @@ export function Navbar({
                   {/* Dropdown Profile without logout */}
                   <div className="absolute right-0 w-72 mt-2 origin-top-right bg-white border border-gray-200 divide-y divide-gray-100 rounded-2xl shadow-xl outline-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
                     <div className="px-4 py-3">
-                      <p className="text-[11px] text-gray-500 font-medium">บัญชีผู้ใช้ MTFeed</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] text-gray-500 font-medium">บัญชีผู้ใช้ MTFeed</p>
+                        <button
+                          onClick={onEditProfileClick}
+                          className="text-[11px] font-semibold text-red-600 hover:text-red-700 flex items-center hover:underline cursor-pointer"
+                        >
+                          <Edit3 className="w-3 h-3 mr-1" />
+                          แก้ไข
+                        </button>
+                      </div>
                       <p className="text-sm font-bold text-gray-900 truncate mt-0.5">{user.name || user.username}</p>
                       <div className="flex items-center space-x-2 mt-1">
                         <span className="text-xs text-gray-500 truncate">@{user.username}</span>
-                        <span className="text-[10px] font-mono bg-red-50 text-red-700 border border-red-200 px-1.5 py-0.5 rounded font-semibold" title="รหัสความปลอดภัยประจำตัว">
+                        <span className="text-[10px] font-mono bg-red-50 text-red-700 border border-red-200 px-1.5 py-0.5 rounded font-semibold" title="รหัสความปลอดภัยประจำตัว (โปรดเก็บเป็นความลับ)">
                           UID: #{maskUid(user.uid, user)}
                         </span>
                       </div>
+                      <p className="text-[10px] text-amber-700 font-medium mt-1 flex items-center">
+                        <Shield className="w-2.5 h-2.5 mr-1 text-amber-600" />
+                        โปรดเก็บ UID เป็นความลับเพื่อความปลอดภัย
+                      </p>
                       {badgeText && (
                         <div className="mt-2">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${badgeStyle.bg} ${badgeStyle.text} ${badgeStyle.border}`}>
@@ -147,8 +173,26 @@ export function Navbar({
                     </div>
                     <div className="py-1">
                       <button 
+                        onClick={() => {
+                          if (onViewProfile && user) {
+                            onViewProfile(user);
+                          }
+                        }}
+                        className="w-full flex items-center px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer font-medium"
+                      >
+                        <User className="w-4 h-4 mr-2 text-gray-500" />
+                        ดูโปรไฟล์และโพสต์ของฉัน
+                      </button>
+                      <button 
+                        onClick={onEditProfileClick}
+                        className="w-full flex items-center px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer font-medium"
+                      >
+                        <Camera className="w-4 h-4 mr-2 text-gray-500" />
+                        เปลี่ยนรูปโปรไฟล์ / แก้ไขข้อมูล
+                      </button>
+                      <button 
                         onClick={onOpenNotifications}
-                        className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                        className="w-full flex items-center justify-between px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
                       >
                         <span className="flex items-center font-medium">
                           <Bell className="w-4 h-4 mr-2 text-gray-500" />

@@ -9,12 +9,16 @@ export function SidebarLeft({
   setActiveCategory,
   unreadCount = 0,
   onOpenNotifications,
+  onEditProfileClick,
+  onViewProfile,
   currentUser
 }: { 
   activeCategory: string;
   setActiveCategory: (id: string) => void;
   unreadCount?: number;
   onOpenNotifications?: () => void;
+  onEditProfileClick?: () => void;
+  onViewProfile?: (user: SessionUser) => void;
   currentUser?: SessionUser | null;
 }) {
   const badgeText = currentUser ? (currentUser.badge || formatUserBadge(currentUser)) : '';
@@ -29,15 +33,38 @@ export function SidebarLeft({
         {currentUser && (
           <div className="bg-white rounded-2xl p-4 border border-gray-200/80 shadow-xs mb-4">
             <div className="flex items-center space-x-3">
-              <img 
-                src={currentUser.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(currentUser.username)}&backgroundColor=cccccc`} 
-                alt={currentUser.username}
-                className="w-10 h-10 rounded-full bg-gray-100 object-cover border border-gray-200"
-              />
+              <div 
+                className="relative group cursor-pointer" 
+                onClick={() => onViewProfile ? onViewProfile(currentUser) : onEditProfileClick?.()} 
+                title="คลิกเพื่อดูโปรไฟล์ของคุณ"
+              >
+                <img 
+                  src={currentUser.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(currentUser.username)}&backgroundColor=cccccc`} 
+                  alt={currentUser.username}
+                  className="w-10 h-10 rounded-full bg-gray-100 object-cover border border-gray-200 group-hover:ring-2 group-hover:ring-red-400 transition-all"
+                />
+                <span className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Icons.User className="w-3.5 h-3.5" />
+                </span>
+              </div>
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold text-gray-900 truncate">
-                  {currentUser.name || currentUser.username}
-                </p>
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={() => onViewProfile ? onViewProfile(currentUser) : onEditProfileClick?.()}
+                    className="text-xs font-bold text-gray-900 truncate hover:text-red-600 hover:underline cursor-pointer text-left"
+                    title="คลิกเพื่อดูโปรไฟล์"
+                  >
+                    {currentUser.name || currentUser.username}
+                  </button>
+                  <button
+                    onClick={onEditProfileClick}
+                    className="text-[10px] text-red-600 hover:text-red-700 font-semibold flex items-center cursor-pointer ml-1"
+                    title="แก้ไขโปรไฟล์"
+                  >
+                    <Icons.Edit3 className="w-3 h-3 mr-0.5" />
+                    แก้ไข
+                  </button>
+                </div>
                 <div className="flex items-center space-x-1.5 mt-0.5">
                   <span className="text-[11px] text-gray-500 truncate">@{currentUser.username}</span>
                   <span className="text-[9px] font-mono bg-gray-100 text-gray-600 px-1 py-0.2 rounded border border-gray-200">
@@ -60,6 +87,14 @@ export function SidebarLeft({
                 🏛️ {edu}
               </p>
             )}
+
+            <button
+              onClick={() => onViewProfile ? onViewProfile(currentUser) : onEditProfileClick?.()}
+              className="mt-3 w-full py-1.5 px-2 bg-gray-50 hover:bg-red-50 hover:text-red-600 text-gray-600 rounded-xl text-[11px] font-semibold border border-gray-200/80 transition-colors flex items-center justify-center space-x-1 cursor-pointer"
+            >
+              <Icons.User className="w-3 h-3" />
+              <span>ดูโปรไฟล์และโพสต์ของฉัน</span>
+            </button>
 
             <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between text-[10px] text-gray-400">
               <span className="flex items-center">

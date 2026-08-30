@@ -21,7 +21,8 @@ export function Feed({
   registeredUsers = [],
   onMention,
   onExternalLinkClick,
-  onReportPost
+  onReportPost,
+  onProfileClick
 }: { 
   posts?: Post[];
   setPosts?: React.Dispatch<React.SetStateAction<Post[]>>;
@@ -46,6 +47,7 @@ export function Feed({
   }) => void;
   onExternalLinkClick?: (url: string) => void;
   onReportPost?: (postId: string) => void;
+  onProfileClick?: (user: any) => void;
 }) {
 
   const handlePost = (content: string, isAnonymous: boolean, image?: string, poll?: { options: { id: string, text: string, votes: number }[], expiresAt: string, totalVotes: number }) => {
@@ -234,6 +236,8 @@ export function Feed({
     if (targetPost) {
       const newStats = { ...targetPost.stats };
       const newInteractions = { ...(targetPost.userInteractions || {}) };
+      let newRepostedBy = [...(targetPost.repostedBy || [])];
+      let newRepostedUsers = [...(targetPost.repostedUsers || [])];
 
       if (type === 'like') {
         const currentlyLiked = newInteractions.liked;
@@ -243,6 +247,26 @@ export function Feed({
         const currentlyReposted = newInteractions.reposted;
         newInteractions.reposted = !currentlyReposted;
         newStats.reposts += currentlyReposted ? -1 : 1;
+        
+        if (user) {
+          const username = user.username;
+          if (newInteractions.reposted) {
+            if (!newRepostedBy.includes(username)) {
+              newRepostedBy.push(username);
+            }
+            if (!newRepostedUsers.some(u => u.username === username)) {
+              newRepostedUsers.push({
+                username: user.username,
+                name: user.name || user.username,
+                avatar: user.avatar,
+                uid: user.uid
+              });
+            }
+          } else {
+            newRepostedBy = newRepostedBy.filter(u => u !== username);
+            newRepostedUsers = newRepostedUsers.filter(u => u.username !== username);
+          }
+        }
       } else if (type === 'bookmark') {
         const currentlyBookmarked = newInteractions.bookmarked;
         newInteractions.bookmarked = !currentlyBookmarked;
@@ -252,7 +276,9 @@ export function Feed({
       const updatedPost: Post = {
         ...targetPost,
         stats: newStats,
-        userInteractions: newInteractions
+        userInteractions: newInteractions,
+        repostedBy: newRepostedBy,
+        repostedUsers: newRepostedUsers
       };
       savePostToFirestore(updatedPost);
     }
@@ -263,6 +289,8 @@ export function Feed({
         
         const newStats = { ...post.stats };
         const newInteractions = { ...(post.userInteractions || {}) };
+        let newRepostedBy = [...(post.repostedBy || [])];
+        let newRepostedUsers = [...(post.repostedUsers || [])];
 
         if (type === 'like') {
           const currentlyLiked = newInteractions.liked;
@@ -272,6 +300,26 @@ export function Feed({
           const currentlyReposted = newInteractions.reposted;
           newInteractions.reposted = !currentlyReposted;
           newStats.reposts += currentlyReposted ? -1 : 1;
+
+          if (user) {
+            const username = user.username;
+            if (newInteractions.reposted) {
+              if (!newRepostedBy.includes(username)) {
+                newRepostedBy.push(username);
+              }
+              if (!newRepostedUsers.some(u => u.username === username)) {
+                newRepostedUsers.push({
+                  username: user.username,
+                  name: user.name || user.username,
+                  avatar: user.avatar,
+                  uid: user.uid
+                });
+              }
+            } else {
+              newRepostedBy = newRepostedBy.filter(u => u !== username);
+              newRepostedUsers = newRepostedUsers.filter(u => u.username !== username);
+            }
+          }
         } else if (type === 'bookmark') {
           const currentlyBookmarked = newInteractions.bookmarked;
           newInteractions.bookmarked = !currentlyBookmarked;
@@ -281,7 +329,9 @@ export function Feed({
         return {
           ...post,
           stats: newStats,
-          userInteractions: newInteractions
+          userInteractions: newInteractions,
+          repostedBy: newRepostedBy,
+          repostedUsers: newRepostedUsers
         };
       }));
     }
@@ -350,22 +400,36 @@ export function Feed({
     // Filter by search query
     if (searchQuery && searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
-      result = result.filter(post => 
-        post.content?.toLowerCase().includes(q) ||
-        post.author?.name?.toLowerCase().includes(q) ||
-        post.author?.username?.toLowerCase().includes(q) ||
-        (post.tags && post.tags.some(t => t.toLowerCase().includes(q)))
-      );
+      result = result.filter(post => {
+        if (!post) return false;
+        const contentMatch = post.content?.toLowerCase().includes(q);
+        const nameMatch = post.author?.name?.toLowerCase().includes(q);
+        const usernameMatch = post.author?.username?.toLowerCase().includes(q);
+        const tagsMatch = Array.isArray(post.tags) && post.tags.some(t => (t || '').toLowerCase().includes(q));
+        return contentMatch || nameMatch || usernameMatch || tagsMatch;
+      });
     }
 
     // Filter by category
     switch (activeCategory) {
       case 'mine':
-        return result.filter(post => 
-          (user && post.author.username === user.username) || post.userInteractions?.reposted
-        );
+        if (!user) return [];
+        const myUsername = (user.username || '').replace(/^@/, '').toLowerCase();
+        const myUid = user.uid || (user as any).id || '';
+        return result.filter(post => {
+          if (!post) return false;
+          const authorUsername = (post.author?.username || '').replace(/^@/, '').toLowerCase();
+          const authorUid = post.author?.id || (post.author as any)?.uid || '';
+          const isAuthor = (myUsername && authorUsername === myUsername) || (myUid && authorUid === myUid);
+          const isRepost = Boolean(
+            post.userInteractions?.reposted || 
+            (Array.isArray(post.repostedBy) && post.repostedBy.some(u => (u || '').replace(/^@/, '').toLowerCase() === myUsername)) ||
+            (Array.isArray(post.repostedUsers) && post.repostedUsers.some(u => (u.username || '').replace(/^@/, '').toLowerCase() === myUsername || (myUid && u.uid === myUid)))
+          );
+          return isAuthor || isRepost;
+        });
       case 'bookmarks':
-        return result.filter(post => post.userInteractions?.bookmarked);
+        return result.filter(post => Boolean(post?.userInteractions?.bookmarked));
       case 'all':
       default:
         return result;
@@ -407,6 +471,7 @@ export function Feed({
         externalSharedText={externalSharedText}
         onClearExternalSharedText={onClearExternalSharedText}
         registeredUsers={registeredUsers}
+        onLoginClick={onLoginClick}
       />
 
       <div className="divide-y divide-gray-100">
@@ -449,6 +514,7 @@ export function Feed({
               user={user}
               onSelectTag={onSelectTag}
               onExternalLinkClick={onExternalLinkClick}
+              onProfileClick={onProfileClick}
             />
           ))
         )}

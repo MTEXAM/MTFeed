@@ -11,7 +11,8 @@ export function OnlineMembersModal({
   onDeleteUser,
   onClearAllUsers,
   onVerifyAdmin,
-  onSelectUserForPost
+  onSelectUserForPost,
+  onViewProfile
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -21,6 +22,7 @@ export function OnlineMembersModal({
   onClearAllUsers?: () => void;
   onVerifyAdmin?: (password: string) => boolean;
   onSelectUserForPost?: (username: string) => void;
+  onViewProfile?: (user: SessionUser) => void;
 }) {
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<SessionUser | null>(null);
   const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
@@ -266,18 +268,26 @@ export function OnlineMembersModal({
 
               return (
                 <div key={member.uid || member.username} className="py-3 first:pt-0 last:pb-0 flex items-center justify-between group hover:bg-gray-50/80 px-2 rounded-xl transition-colors">
-                  <div className="flex items-center space-x-3 min-w-0">
+                  <div 
+                    onClick={() => {
+                      if (onViewProfile) {
+                        onViewProfile(member);
+                      }
+                    }}
+                    className="flex items-center space-x-3 min-w-0 cursor-pointer flex-1"
+                    title={`คลิกเพื่อดูโปรไฟล์และโพสต์ของ ${member.name || member.username}`}
+                  >
                     <div className="relative flex-shrink-0">
                       <img 
                         src={member.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(member.username)}&backgroundColor=cccccc`} 
                         alt={member.name || member.username}
-                        className="w-11 h-11 rounded-full object-cover border-2 border-white shadow-xs" 
+                        className="w-11 h-11 rounded-full object-cover border-2 border-white shadow-xs group-hover:ring-2 group-hover:ring-red-400 transition-all" 
                       />
                       <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full"></span>
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
-                        <p className="text-sm font-bold text-gray-900 truncate">
+                        <p className="text-sm font-bold text-gray-900 truncate group-hover:text-red-600 group-hover:underline transition-colors">
                           {member.name || member.username}
                         </p>
                         {isSelf && (
