@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookA, MessageSquare, Bell, Search, Settings, User, Shield, Award, Camera, Edit3 } from 'lucide-react';
+import { BookA, MessageSquare, Bell, Search, Settings, User, Shield, Award, Camera, Edit3, LogOut } from 'lucide-react';
 import { SessionUser } from '../types';
 import { getBadgeStyle, formatUserBadge, maskUid } from '../utils/auth';
 
@@ -9,6 +9,7 @@ export function Navbar({
   onAdminClick,
   onEditProfileClick,
   onViewProfile,
+  onLogoutClick,
   searchQuery,
   onSearchChange,
   unreadCount = 0,
@@ -20,6 +21,7 @@ export function Navbar({
   onAdminClick?: () => void;
   onEditProfileClick?: () => void;
   onViewProfile?: (user: SessionUser) => void;
+  onLogoutClick?: () => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
   unreadCount?: number;
@@ -199,6 +201,15 @@ export function Navbar({
                             {unreadCount}
                           </span>
                         )}
+                      </button>
+                    </div>
+                    <div className="py-1 border-t border-gray-100">
+                      <button 
+                        onClick={onLogoutClick}
+                        className="w-full flex items-center px-4 py-2 text-xs text-red-600 hover:bg-red-50 transition-colors cursor-pointer font-medium"
+                      >
+                        <LogOut className="w-4 h-4 mr-2 text-red-500" />
+                        ออกจากระบบ (Logout)
                       </button>
                     </div>
                     <div className="px-4 py-2 bg-gray-50 text-[11px] text-gray-500 flex items-center space-x-1.5 rounded-b-2xl">
