@@ -17,6 +17,7 @@ import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, 
 import { SessionUser, AppNotification, Post, User } from './types';
 import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid, formatUserBadge, DEFAULT_ACTIVE_USERS } from './utils/auth';
 import { subscribeToPosts, subscribeToUsers, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore, syncPostsToFirestore, getUserFromFirestore, getBackupPostsFromSQLite, getBackupUsersFromSQLite, restoreBackupsToFirestore } from './utils/firestoreService';
+import { fetchFeedFromGoogleSheets, fetchProfileFromGoogleSheets, syncProfileToGoogleSheets, syncPostToGoogleSheets } from './utils/googleSheetsService';
 import { formatRealTime } from './utils/timeUtils';
 import { INITIAL_POSTS } from './data';
 
@@ -380,17 +381,50 @@ export default function App() {
     hydrateUser();
   }, []);
 
-  // SQLite Layer 2 Backup: Load local backup from SQLite server and trigger Throttled Self-Healing back-sync if Firestore is out of sync
+  // Tier 1 Google Sheets & Tier 2 SQLite Backup: Load backups on startup and trigger Throttled Self-Healing back-sync
   useEffect(() => {
-    let sqlitePostsList: Post[] = [];
-    let sqliteUsersList: SessionUser[] = [];
+    let backupPostsList: Post[] = [];
+    let backupUsersList: SessionUser[] = [];
 
-    async function loadSQLiteBackups() {
+    async function loadMultiTierBackups() {
+      // A. Load from Tier 1: Permanent Google Sheets Backup
+      try {
+        console.log('[GOOGLE SHEETS RESTORE] Fetching permanent Google Sheets feed...');
+        const sheetPosts = await fetchFeedFromGoogleSheets();
+        if (sheetPosts && sheetPosts.length > 0) {
+          console.log(`[GOOGLE SHEETS RESTORE] Found ${sheetPosts.length} posts in Google Sheets! Merging...`);
+          backupPostsList = [...sheetPosts];
+          setPosts(prevPosts => {
+            const merged = mergePostsLists(sheetPosts, prevPosts);
+            try {
+              localStorage.setItem('mtfeed_posts', JSON.stringify(merged));
+            } catch (e) {}
+            return merged;
+          });
+        }
+      } catch (err) {
+        console.warn('Could not load backup from Google Sheets:', err);
+      }
+
+      // Check current user profile from Google Sheets
+      if (user && (user.uid || user.id)) {
+        try {
+          const sheetProfile = await fetchProfileFromGoogleSheets(user.uid || user.id || '');
+          if (sheetProfile) {
+            console.log('[GOOGLE SHEETS RESTORE] Found user profile in Google Sheets:', sheetProfile.name);
+            setUser(prev => prev ? { ...prev, ...sheetProfile, name: sheetProfile.name || prev.name, avatar: sheetProfile.avatar || prev.avatar } : prev);
+          }
+        } catch (err) {
+          console.warn('Could not load profile from Google Sheets:', err);
+        }
+      }
+
+      // B. Load from Tier 2: Local SQLite Server Backup
       try {
         console.log('[SQLITE RESTORE] Fetching SQLite posts backup...');
         const sqlitePosts = await getBackupPostsFromSQLite();
         if (sqlitePosts && sqlitePosts.length > 0) {
-          sqlitePostsList = sqlitePosts;
+          backupPostsList = mergePostsLists(sqlitePosts, backupPostsList);
           console.log(`[SQLITE RESTORE] Found ${sqlitePosts.length} posts in SQLite backup. Merging...`);
           setPosts(prevPosts => {
             const merged = mergePostsLists(sqlitePosts, prevPosts);
@@ -408,7 +442,7 @@ export default function App() {
         console.log('[SQLITE RESTORE] Fetching SQLite users backup...');
         const sqliteUsers = await getBackupUsersFromSQLite();
         if (sqliteUsers && sqliteUsers.length > 0) {
-          sqliteUsersList = sqliteUsers;
+          backupUsersList = sqliteUsers;
           console.log(`[SQLITE RESTORE] Found ${sqliteUsers.length} users in SQLite backup.`);
           // Sync users to registered users state
           setRegisteredUsers(prev => {
@@ -444,30 +478,30 @@ export default function App() {
         console.warn('Could not load user backups from SQLite:', err);
       }
 
-      // Self-Healing Comparison: Check if any items in SQLite backups are missing in Firestore,
+      // Self-Healing Comparison: Check if any items in Google Sheets/SQLite backups are missing in Firestore,
       // and trigger Throttled Back-Sync to Firestore
       setTimeout(() => {
         const firestorePostIds = new Set(lastFirestorePostsRef.current.map(p => p.id));
         const firestoreUserIds = new Set(lastFirestoreUsersRef.current.map(u => u.uid || u.username || u.id));
 
-        const missingPosts = sqlitePostsList.filter(p => p && p.id && !firestorePostIds.has(p.id));
-        const missingUsers = sqliteUsersList.filter(u => {
+        const missingPosts = backupPostsList.filter(p => p && p.id && !firestorePostIds.has(p.id));
+        const missingUsers = backupUsersList.filter(u => {
           const key = u && (u.uid || u.username || u.id);
           return key && !firestoreUserIds.has(key);
         });
 
         if (missingPosts.length > 0 || missingUsers.length > 0) {
-          console.log(`[SELF-HEALING] Out of sync! Found ${missingPosts.length} posts and ${missingUsers.length} users in SQLite missing from Firestore.`);
+          console.log(`[SELF-HEALING] Out of sync! Found ${missingPosts.length} posts and ${missingUsers.length} users in backups missing from Firestore.`);
           restoreBackupsToFirestore(missingPosts, missingUsers).catch(err => {
             console.error('[SELF-HEALING ERROR] Backup restoration failed:', err);
           });
         } else {
-          console.log('[SELF-HEALING] Firestore is fully in-sync with SQLite backup! No restoration needed.');
+          console.log('[SELF-HEALING] Firestore is fully in-sync with Google Sheets & SQLite backups! No restoration needed.');
         }
       }, 3500); // 3.5 seconds delay to allow Firestore subscription to settle
     }
     
-    loadSQLiteBackups();
+    loadMultiTierBackups();
   }, [user]);
 
   // Save posts to localStorage for offline cache

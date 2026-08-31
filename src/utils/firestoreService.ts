@@ -15,6 +15,7 @@ import { db } from '../lib/firebase';
 import { Post, SessionUser, Comment } from '../types';
 import { INITIAL_POSTS } from '../data';
 import { DEFAULT_ACTIVE_USERS } from './auth';
+import { syncProfileToGoogleSheets, syncPostToGoogleSheets } from './googleSheetsService';
 
 const USERS_COLLECTION = 'users';
 const POSTS_COLLECTION = 'posts';
@@ -141,6 +142,9 @@ export async function saveUserToFirestore(user: SessionUser): Promise<void> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...userData, updatedAt: Date.now() })
     }).catch(err => console.warn('SQLite user backup sync failed:', err));
+
+    // Google Sheets Tier 1 Master Permanent Backup
+    syncProfileToGoogleSheets(userData).catch(err => console.warn('Google Sheets user sync failed:', err));
   } catch (e) {
     console.error('Error saving user to Firestore:', e);
   }
@@ -516,6 +520,9 @@ export async function savePostToFirestore(post: Post): Promise<void> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify([fullPostWithTime])
     }).catch(err => console.warn('SQLite post backup sync failed:', err));
+
+    // Google Sheets Tier 1 Master Permanent Backup
+    syncPostToGoogleSheets(fullPostWithTime).catch(err => console.warn('Google Sheets post sync failed:', err));
   } catch (e) {
     console.warn('Error saving post to Firestore (using local fallback):', e);
   }

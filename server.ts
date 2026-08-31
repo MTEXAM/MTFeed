@@ -293,6 +293,127 @@ async function startServer() {
     }
   });
 
+  // --- GOOGLE SHEETS PERMANENT CLOUD BACKUP INTEGRATION ---
+  const GOOGLE_SHEETS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbz1ZrKFZIHSnhlc6BQd_WvmOdHGa8ENQ6CuIu-MbPdWtgAtVj4WuzUgF6xtbtmFuPoBmQ/exec';
+
+  // Sync profile to Google Sheets
+  app.post('/api/sheets/profile', async (req, res) => {
+    try {
+      const payload = req.body;
+      console.log('[SHEETS PROXY] Queuing profile sync to Google Sheets for UID:', payload.uid);
+
+      sqliteQueue.add(async () => {
+        try {
+          const resp = await fetch(GOOGLE_SHEETS_ENDPOINT, {
+            method: 'POST',
+            body: JSON.stringify({
+              action: 'updateProfile',
+              uid: payload.uid || payload.id,
+              displayName: payload.displayName || payload.name || 'User',
+              username: payload.username || '',
+              profileImage: payload.profileImage || payload.avatar || ''
+            })
+          });
+          const result = await resp.json().catch(() => ({}));
+          console.log('[SHEETS PROXY SUCCESS] Profile synced to Google Sheets:', result);
+        } catch (e) {
+          console.error('[SHEETS PROXY ERROR] Failed to sync profile to Google Sheets:', e);
+        }
+      });
+
+      res.json({ success: true, queued: true, message: 'Profile queued for Google Sheets permanent backup' });
+    } catch (err: any) {
+      console.error('[SHEETS PROXY ERROR]', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Sync post to Google Sheets
+  app.post('/api/sheets/post', async (req, res) => {
+    try {
+      const payload = req.body;
+      console.log('[SHEETS PROXY] Queuing post sync to Google Sheets from author UID:', payload.uid);
+
+      sqliteQueue.add(async () => {
+        try {
+          const resp = await fetch(GOOGLE_SHEETS_ENDPOINT, {
+            method: 'POST',
+            body: JSON.stringify({
+              action: 'createPost',
+              uid: payload.uid || '#MED68001',
+              content: payload.content || ''
+            })
+          });
+          const result = await resp.json().catch(() => ({}));
+          console.log('[SHEETS PROXY SUCCESS] Post synced to Google Sheets:', result);
+        } catch (e) {
+          console.error('[SHEETS PROXY ERROR] Failed to sync post to Google Sheets:', e);
+        }
+      });
+
+      res.json({ success: true, queued: true, message: 'Post queued for Google Sheets permanent backup' });
+    } catch (err: any) {
+      console.error('[SHEETS PROXY ERROR]', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Edit post in Google Sheets
+  app.post('/api/sheets/editPost', async (req, res) => {
+    try {
+      const payload = req.body;
+      console.log('[SHEETS PROXY] Queuing edit post sync to Google Sheets for postId:', payload.postId);
+
+      sqliteQueue.add(async () => {
+        try {
+          const resp = await fetch(GOOGLE_SHEETS_ENDPOINT, {
+            method: 'POST',
+            body: JSON.stringify({
+              action: 'editPost',
+              postId: payload.postId,
+              uid: payload.uid || '#MED68001',
+              newContent: payload.newContent || ''
+            })
+          });
+          const result = await resp.json().catch(() => ({}));
+          console.log('[SHEETS PROXY SUCCESS] Post edit synced to Google Sheets:', result);
+        } catch (e) {
+          console.error('[SHEETS PROXY ERROR] Failed to sync post edit to Google Sheets:', e);
+        }
+      });
+
+      res.json({ success: true, queued: true, message: 'Post edit queued for Google Sheets' });
+    } catch (err: any) {
+      console.error('[SHEETS PROXY ERROR]', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Get live feed from Google Sheets
+  app.get('/api/sheets/feed', async (req, res) => {
+    try {
+      const resp = await fetch(`${GOOGLE_SHEETS_ENDPOINT}?action=getFeed`);
+      const data = await resp.json();
+      res.json(data);
+    } catch (err: any) {
+      console.error('[SHEETS GET FEED ERROR]', err);
+      res.status(500).json({ status: 'error', error: err.message });
+    }
+  });
+
+  // Get user profile from Google Sheets
+  app.get('/api/sheets/profile/:uid', async (req, res) => {
+    try {
+      const { uid } = req.params;
+      const resp = await fetch(`${GOOGLE_SHEETS_ENDPOINT}?action=getProfile&uid=${encodeURIComponent(uid)}`);
+      const data = await resp.json();
+      res.json(data);
+    } catch (err: any) {
+      console.error('[SHEETS GET PROFILE ERROR]', err);
+      res.status(500).json({ status: 'error', error: err.message });
+    }
+  });
+
   // --- VITE MIDDLEWARE / SPA FALLBACK ---
 
   if (process.env.NODE_ENV !== 'production') {
