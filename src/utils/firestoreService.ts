@@ -122,6 +122,17 @@ export async function saveUserToFirestore(user: SessionUser): Promise<void> {
       }
     });
 
+    // 1. Google Sheets Tier 1 Master Permanent Backup (Instant Fire)
+    syncProfileToGoogleSheets(userData).catch(err => console.warn('Google Sheets user sync failed:', err));
+
+    // 2. SQLite Layer 2 Backup: Save User profile to local SQLite
+    fetch('/api/backup/user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...userData, updatedAt: Date.now() })
+    }).catch(err => console.warn('SQLite user backup sync failed:', err));
+
+    // 3. Firestore Realtime Sync
     const userRef = doc(db, USERS_COLLECTION, docId);
     
     // Layer 6: Create Snapshot before update
@@ -135,16 +146,6 @@ export async function saveUserToFirestore(user: SessionUser): Promise<void> {
       ...userData,
       updatedAt: Date.now()
     }, { merge: true });
-
-    // SQLite Layer 2 Backup: Save User profile to local SQLite
-    fetch('/api/backup/user', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...userData, updatedAt: Date.now() })
-    }).catch(err => console.warn('SQLite user backup sync failed:', err));
-
-    // Google Sheets Tier 1 Master Permanent Backup
-    syncProfileToGoogleSheets(userData).catch(err => console.warn('Google Sheets user sync failed:', err));
   } catch (e) {
     console.error('Error saving user to Firestore:', e);
   }
@@ -504,25 +505,23 @@ export async function savePostToFirestore(post: Post): Promise<void> {
   const deletedIds = getDeletedPostIds();
   if (deletedIds.has(post.id)) return; // Don't save deleted post
 
+  const fullPostWithTime = {
+    ...post,
+    createdAtMs: (post as any).createdAtMs || Date.now()
+  };
+
+  // 1. SQLite Layer 2 Backup: Save Post to local SQLite
+  fetch('/api/backup/posts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify([fullPostWithTime])
+  }).catch(err => console.warn('SQLite post backup sync failed:', err));
+
+  // 2. Firestore Realtime Sync
   try {
-    const postData = sanitizeForFirestore(post);
+    const postData = sanitizeForFirestore(fullPostWithTime);
     const postRef = doc(db, POSTS_COLLECTION, post.id);
-    const fullPostWithTime = {
-      ...postData,
-      createdAtMs: (post as any).createdAtMs || Date.now()
-    };
-    
-    await setDoc(postRef, fullPostWithTime, { merge: true });
-
-    // SQLite Layer 2 Backup: Save Post to local SQLite
-    fetch('/api/backup/posts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify([fullPostWithTime])
-    }).catch(err => console.warn('SQLite post backup sync failed:', err));
-
-    // Google Sheets Tier 1 Master Permanent Backup
-    syncPostToGoogleSheets(fullPostWithTime).catch(err => console.warn('Google Sheets post sync failed:', err));
+    await setDoc(postRef, postData, { merge: true });
   } catch (e) {
     console.warn('Error saving post to Firestore (using local fallback):', e);
   }

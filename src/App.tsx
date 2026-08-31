@@ -502,7 +502,7 @@ export default function App() {
     }
     
     loadMultiTierBackups();
-  }, [user]);
+  }, []);
 
   // Save posts to localStorage for offline cache
   useEffect(() => {

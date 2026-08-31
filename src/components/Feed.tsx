@@ -4,6 +4,7 @@ import { PostItem } from './PostItem';
 import { MOCK_USERS } from '../data';
 import { Post, Comment, SessionUser } from '../types';
 import { deletePostFromFirestore, savePostToFirestore, markPostAsDeletedLocally } from '../utils/firestoreService';
+import { syncPostToGoogleSheets, syncProfileToGoogleSheets } from '../utils/googleSheetsService';
 import { formatRealTime } from '../utils/timeUtils';
 
 export function Feed({ 
@@ -51,10 +52,12 @@ export function Feed({
 }) {
 
   const handlePost = (content: string, isAnonymous: boolean, image?: string, poll?: { options: { id: string, text: string, votes: number }[], expiresAt: string, totalVotes: number }) => {
+    const authorUid = user?.uid || user?.id || user?.username || 'MED68001';
     const author = (isAnonymous || !user) 
-      ? MOCK_USERS.anon 
+      ? { ...MOCK_USERS.anon, uid: 'anon' }
       : { 
-          id: user.uid || user.id || user.username, 
+          id: authorUid,
+          uid: authorUid,
           name: (user.isAdmin || user.badge === '👑 Admin') ? '👑 Admin' : (user.name || user.username), 
           username: (user.isAdmin || user.badge === '👑 Admin') ? '👑Admin' : user.username, 
           avatar: user.avatar || (user.isAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.username)}&backgroundColor=cccccc`),
@@ -88,7 +91,14 @@ export function Feed({
     if (setPosts) {
       setPosts(prev => [newPost, ...prev]);
     }
+    
+    // Save to Firestore, SQLite, and Google Sheets
     savePostToFirestore(newPost).catch(e => console.error('Failed to save post:', e));
+    syncPostToGoogleSheets(newPost).catch(e => console.error('Failed to sync to Google Sheets:', e));
+
+    if (user && !isAnonymous) {
+      syncProfileToGoogleSheets(user).catch(e => console.warn('Failed to sync user profile to Google Sheets:', e));
+    }
 
     // Extract @mentions and notify recipient
     const matches = content.match(/@([\w\u0E00-\u0E7F]+)/g);

@@ -193,53 +193,55 @@ export function SidebarRight({
           </p>
         </div>
 
-        {/* Quad-Tier Permanent Storage Status */}
-        <div className="bg-gradient-to-br from-emerald-50 to-teal-50/70 rounded-2xl p-4 border border-emerald-200/80 shadow-xs space-y-2.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <h3 className="text-xs font-bold text-emerald-950 uppercase tracking-wider">ระบบสำรองข้อมูลถาวร</h3>
+        {/* Quad-Tier Permanent Storage Status (Admin Only) */}
+        {currentUser?.isAdmin && (
+          <div className="bg-gradient-to-br from-emerald-50 to-teal-50/70 rounded-2xl p-4 border border-emerald-200/80 shadow-xs space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                <h3 className="text-xs font-bold text-emerald-950 uppercase tracking-wider">ระบบสำรองข้อมูลถาวร (Admin)</h3>
+              </div>
+              <span className="flex items-center text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1"></span>
+                Active
+              </span>
             </div>
-            <span className="flex items-center text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1"></span>
-              Active
-            </span>
-          </div>
 
-          <div className="space-y-1.5 text-[11px] text-emerald-900">
-            <div className="flex items-center justify-between py-1 border-b border-emerald-100/80">
-              <span className="flex items-center text-gray-700">
-                <Database className="w-3 h-3 mr-1.5 text-emerald-600" />
-                Google Sheets (ถาวร)
-              </span>
-              <span className="font-semibold text-emerald-700 flex items-center">
-                <CheckCircle2 className="w-3 h-3 mr-0.5 text-emerald-600" /> เชื่อมต่อแล้ว
-              </span>
+            <div className="space-y-1.5 text-[11px] text-emerald-900">
+              <div className="flex items-center justify-between py-1 border-b border-emerald-100/80">
+                <span className="flex items-center text-gray-700">
+                  <Database className="w-3 h-3 mr-1.5 text-emerald-600" />
+                  Google Sheets (ถาวร)
+                </span>
+                <span className="font-semibold text-emerald-700 flex items-center">
+                  <CheckCircle2 className="w-3 h-3 mr-0.5 text-emerald-600" /> เชื่อมต่อแล้ว
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-1 border-b border-emerald-100/80">
+                <span className="flex items-center text-gray-700">
+                  <Cloud className="w-3 h-3 mr-1.5 text-blue-600" />
+                  Cloud Firestore (Realtime)
+                </span>
+                <span className="font-semibold text-blue-700 flex items-center">
+                  <CheckCircle2 className="w-3 h-3 mr-0.5 text-blue-600" /> ซิงค์สด
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-1">
+                <span className="flex items-center text-gray-700">
+                  <Database className="w-3 h-3 mr-1.5 text-amber-600" />
+                  SQLite WAL (Server Dual-Write)
+                </span>
+                <span className="font-semibold text-amber-700 flex items-center">
+                  <CheckCircle2 className="w-3 h-3 mr-0.5 text-amber-600" /> ทำงานคู่ขนาน
+                </span>
+              </div>
             </div>
-            <div className="flex items-center justify-between py-1 border-b border-emerald-100/80">
-              <span className="flex items-center text-gray-700">
-                <Cloud className="w-3 h-3 mr-1.5 text-blue-600" />
-                Cloud Firestore (Realtime)
-              </span>
-              <span className="font-semibold text-blue-700 flex items-center">
-                <CheckCircle2 className="w-3 h-3 mr-0.5 text-blue-600" /> ซิงค์สด
-              </span>
-            </div>
-            <div className="flex items-center justify-between py-1">
-              <span className="flex items-center text-gray-700">
-                <Database className="w-3 h-3 mr-1.5 text-amber-600" />
-                SQLite WAL (Server Dual-Write)
-              </span>
-              <span className="font-semibold text-amber-700 flex items-center">
-                <CheckCircle2 className="w-3 h-3 mr-0.5 text-amber-600" /> ทำงานคู่ขนาน
-              </span>
-            </div>
-          </div>
 
-          <p className="text-[10px] text-emerald-800 leading-normal pt-1 border-t border-emerald-100/80">
-            🔒 ทุกโพสต์และโปรไฟล์ได้รับการบันทึกลง Google Sheet จริง จึงไม่มีวันสูญหายแม้รีเฟรชหรือเปลี่ยนเครื่อง
-          </p>
-        </div>
+            <p className="text-[10px] text-emerald-800 leading-normal pt-1 border-t border-emerald-100/80">
+              🔒 ทุกโพสต์และโปรไฟล์ได้รับการบันทึกลง Google Sheet จริง จึงไม่มีวันสูญหายแม้รีเฟรชหรือเปลี่ยนเครื่อง
+            </p>
+          </div>
+        )}
 
       </div>
     </div>

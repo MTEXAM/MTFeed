@@ -50,12 +50,26 @@ export async function syncProfileToGoogleSheets(user: Partial<SessionUser>): Pro
   }
 }
 
+// Set to track synced post IDs to avoid infinite loops and duplicate submissions
+const syncedPostsSet = new Set<string>();
+
 /**
  * 2. Sync created tweet / post to Google Sheets via server proxy / Apps Script
  * Payload format: { action: 'createPost', uid, content }
  */
 export async function syncPostToGoogleSheets(post: Post): Promise<boolean> {
-  if (!post || !post.content) return false;
+  if (!post || !post.content || !post.id) return false;
+
+  // Prevent duplicate syncing of the exact same post ID
+  if (syncedPostsSet.has(post.id)) {
+    return true;
+  }
+  syncedPostsSet.add(post.id);
+
+  // If post came from Google Sheets itself, do not re-send
+  if (post.id.startsWith('POST_') || post.id.startsWith('TWEET_') || post.id.startsWith('sheet_post_') || (post.tags && post.tags.includes('#GoogleSheetPermanent'))) {
+    return true;
+  }
 
   const payload = {
     action: 'createPost',
