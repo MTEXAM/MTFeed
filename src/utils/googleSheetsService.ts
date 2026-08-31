@@ -67,14 +67,15 @@ export async function syncPostToGoogleSheets(post: Post): Promise<boolean> {
   syncedPostsSet.add(post.id);
 
   // If post came from Google Sheets itself, do not re-send
-  if (post.id.startsWith('POST_') || post.id.startsWith('TWEET_') || post.id.startsWith('sheet_post_') || (post.tags && post.tags.includes('#GoogleSheetPermanent'))) {
+  if (post.id.startsWith('POST_') || post.id.startsWith('TWEET_') || post.id.startsWith('sheet_') || (post.tags && post.tags.includes('#GoogleSheetPermanent'))) {
     return true;
   }
 
   const payload = {
     action: 'createPost',
     uid: (post.author as any)?.uid || post.author?.id || '#MED68001',
-    content: post.content
+    content: post.content,
+    image: post.image || ''
   };
 
   try {
@@ -268,7 +269,8 @@ function mapSheetFeedToPosts(sheetRows: any[]): Post[] {
         faculty: 'คณะเทคนิคการแพทย์'
       },
       content: typeof row.content === 'string' ? row.content : (row.content ? String(row.content) : ''),
-      tags: ['#GoogleSheetPermanent'],
+      image: row.image || undefined,
+      tags: typeof row.content === 'string' ? (row.content.match(/#[\w\u0E00-\u0E7F]+/g) || []) : [],
       createdAt: dateFormatted,
       createdAtMs: rawTime,
       stats: {

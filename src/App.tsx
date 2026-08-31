@@ -739,6 +739,8 @@ export default function App() {
     setUser(updatedUser);
     saveRegisteredUser(updatedUser);
     saveUserToFirestore(updatedUser);
+    syncProfileToGoogleSheets(updatedUser).catch(e => console.warn('Failed to sync profile update to Google Sheets:', e));
+    
     try {
       localStorage.setItem('mtfeed_user', JSON.stringify(updatedUser));
       sessionStorage.setItem('mtfeed_user', JSON.stringify(updatedUser));

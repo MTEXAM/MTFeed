@@ -341,7 +341,8 @@ async function startServer() {
             body: JSON.stringify({
               action: 'createPost',
               uid: payload.uid || '#MED68001',
-              content: payload.content || ''
+              content: payload.content || '',
+              image: payload.image || ''
             })
           });
           const result = await resp.json().catch(() => ({}));
