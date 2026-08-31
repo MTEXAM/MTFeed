@@ -74,7 +74,7 @@ export async function syncPostToGoogleSheets(post: Post): Promise<boolean> {
   const payload = {
     action: 'createPost',
     uid: (post.author as any)?.uid || post.author?.id || '#MED68001',
-    content: post.content,
+    content: post.image ? `${post.content}\n\n[Image: ${post.image}]` : post.content,
     image: post.image || ''
   };
 
@@ -256,6 +256,16 @@ function mapSheetFeedToPosts(sheetRows: any[]): Post[] {
       ? String(row.postId)
       : (row.timestamp ? `sheet_time_${new Date(row.timestamp).getTime()}` : `sheet_row_${idx}`);
 
+    let content = typeof row.content === 'string' ? row.content : (row.content ? String(row.content) : '');
+    let image = row.image || undefined;
+    
+    // Extract image URL if appended as [Image: ...]
+    const imgMatch = content.match(/\[Image:\s*(https?:\/\/[^\]]+)\]/i);
+    if (imgMatch) {
+      image = imgMatch[1];
+      content = content.replace(imgMatch[0], '').trim();
+    }
+
     return {
       id: stableId,
       author: {
@@ -268,9 +278,9 @@ function mapSheetFeedToPosts(sheetRows: any[]): Post[] {
         academicYear: 'ปี 4',
         faculty: 'คณะเทคนิคการแพทย์'
       },
-      content: typeof row.content === 'string' ? row.content : (row.content ? String(row.content) : ''),
-      image: row.image || undefined,
-      tags: typeof row.content === 'string' ? (row.content.match(/#[\w\u0E00-\u0E7F]+/g) || []) : [],
+      content: content,
+      image: image,
+      tags: typeof content === 'string' ? (content.match(/#[\w\u0E00-\u0E7F]+/g) || []) : [],
       createdAt: dateFormatted,
       createdAtMs: rawTime,
       stats: {
