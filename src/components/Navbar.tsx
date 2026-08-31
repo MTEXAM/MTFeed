@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookA, MessageSquare, Bell, Search, Settings, User, Shield, Award, Camera, Edit3, LogOut } from 'lucide-react';
+import { BookA, MessageSquare, Bell, Search, Settings, User, Shield, Award, Camera, Edit3, LogOut, RefreshCw } from 'lucide-react';
 import { SessionUser } from '../types';
 import { getBadgeStyle, formatUserBadge, maskUid } from '../utils/auth';
 
@@ -14,7 +14,9 @@ export function Navbar({
   onSearchChange,
   unreadCount = 0,
   onOpenNotifications,
-  onExternalLinkClick
+  onExternalLinkClick,
+  onRefreshSheets,
+  isSyncingSheets = false
 }: { 
   user: SessionUser | null;
   onLoginClick: () => void;
@@ -27,6 +29,8 @@ export function Navbar({
   unreadCount?: number;
   onOpenNotifications?: () => void;
   onExternalLinkClick?: (url: string) => void;
+  onRefreshSheets?: () => void;
+  isSyncingSheets?: boolean;
 }) {
   const handleExamClick = (e: React.MouseEvent) => {
     const url = "https://mtexam-passalldiwa.ai.studio/";
@@ -93,6 +97,19 @@ export function Navbar({
               )}
             </div>
             
+            {/* Live Google Sheets Refresh / Sync Button */}
+            {onRefreshSheets && (
+              <button
+                onClick={onRefreshSheets}
+                disabled={isSyncingSheets}
+                className="relative p-2 text-gray-500 hover:text-green-600 focus:outline-none rounded-full hover:bg-gray-100 transition-colors disabled:opacity-50"
+                title="ซิงค์ข้อมูลล่าสุดกับ Google Sheets ทันที"
+              >
+                <RefreshCw className={`h-4 w-4 sm:h-5 sm:w-5 ${isSyncingSheets ? 'animate-spin text-green-600' : ''}`} />
+                <span className="sr-only">ซิงค์ Google Sheets</span>
+              </button>
+            )}
+
             {/* Notification Bell Button (Desktop & Mobile) */}
             <button 
               onClick={onOpenNotifications}

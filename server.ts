@@ -389,10 +389,44 @@ async function startServer() {
     }
   });
 
+  // Delete post in Google Sheets
+  app.post('/api/sheets/deletePost', async (req, res) => {
+    try {
+      const payload = req.body;
+      console.log('[SHEETS PROXY] Queuing delete post sync to Google Sheets for postId:', payload.postId);
+
+      sqliteQueue.add(async () => {
+        try {
+          const resp = await fetch(GOOGLE_SHEETS_ENDPOINT, {
+            method: 'POST',
+            body: JSON.stringify({
+              action: 'deletePost',
+              postId: payload.postId,
+              uid: payload.uid || '',
+              content: payload.content || ''
+            })
+          });
+          const result = await resp.json().catch(() => ({}));
+          console.log('[SHEETS PROXY SUCCESS] Post delete synced to Google Sheets:', result);
+        } catch (e) {
+          console.error('[SHEETS PROXY ERROR] Failed to sync post delete to Google Sheets:', e);
+        }
+      });
+
+      res.json({ success: true, queued: true, message: 'Post deletion queued for Google Sheets' });
+    } catch (err: any) {
+      console.error('[SHEETS PROXY ERROR]', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Get live feed from Google Sheets
   app.get('/api/sheets/feed', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     try {
-      const resp = await fetch(`${GOOGLE_SHEETS_ENDPOINT}?action=getFeed`);
+      const resp = await fetch(`${GOOGLE_SHEETS_ENDPOINT}?action=getFeed&_t=${Date.now()}`);
       const data = await resp.json();
       res.json(data);
     } catch (err: any) {
@@ -403,9 +437,12 @@ async function startServer() {
 
   // Get user profile from Google Sheets
   app.get('/api/sheets/profile/:uid', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     try {
       const { uid } = req.params;
-      const resp = await fetch(`${GOOGLE_SHEETS_ENDPOINT}?action=getProfile&uid=${encodeURIComponent(uid)}`);
+      const resp = await fetch(`${GOOGLE_SHEETS_ENDPOINT}?action=getProfile&uid=${encodeURIComponent(uid)}&_t=${Date.now()}`);
       const data = await resp.json();
       res.json(data);
     } catch (err: any) {

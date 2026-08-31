@@ -15,7 +15,7 @@ import { db } from '../lib/firebase';
 import { Post, SessionUser, Comment } from '../types';
 import { INITIAL_POSTS } from '../data';
 import { DEFAULT_ACTIVE_USERS } from './auth';
-import { syncProfileToGoogleSheets, syncPostToGoogleSheets } from './googleSheetsService';
+import { syncProfileToGoogleSheets, syncPostToGoogleSheets, syncDeletePostToGoogleSheets } from './googleSheetsService';
 
 const USERS_COLLECTION = 'users';
 const POSTS_COLLECTION = 'posts';
@@ -564,12 +564,15 @@ export async function syncPostsToFirestore(posts: Post[]): Promise<void> {
 }
 
 // Delete post from Firestore permanently
-export async function deletePostFromFirestore(postId: string): Promise<void> {
+export async function deletePostFromFirestore(postId: string, content?: string, uid?: string): Promise<void> {
   if (!postId) return;
   markPostAsDeletedLocally(postId);
 
+  // 1. Google Sheets Layer 1 Permanent: Delete post in Google Sheet
+  syncDeletePostToGoogleSheets(postId, content, uid).catch(err => console.warn('Google Sheets delete sync failed:', err));
+
   try {
-    // 1. Delete document from posts collection
+    // 2. Delete document from posts collection
     const postRef = doc(db, POSTS_COLLECTION, postId);
     await deleteDoc(postRef).catch(() => {});
 
@@ -577,7 +580,7 @@ export async function deletePostFromFirestore(postId: string): Promise<void> {
     fetch(`/api/backup/posts/${postId}`, { method: 'DELETE' })
       .catch(err => console.warn('SQLite post delete sync failed:', err));
 
-    // 2. Persist deleted post ID in system_config/deleted_posts
+    // 3. Persist deleted post ID in system_config/deleted_posts
     const deletedDocRef = doc(db, 'system_config', 'deleted_posts');
     const snap = await getDoc(deletedDocRef).catch(() => null);
     const existingCloudIds: string[] = snap && snap.exists() ? (snap.data().ids || []) : [];

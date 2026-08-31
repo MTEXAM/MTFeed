@@ -23,17 +23,19 @@ export function SidebarRight({
   const calculateTrends = () => {
     const countMap: Record<string, number> = {};
     
-    posts.forEach(post => {
+    (posts || []).forEach(post => {
+      if (!post) return;
       // 1. From tags array
       if (post.tags && Array.isArray(post.tags)) {
         post.tags.forEach(t => {
           if (!t) return;
-          const clean = t.startsWith('#') ? t : `#${t}`;
+          const clean = String(t).startsWith('#') ? String(t) : `#${String(t)}`;
           countMap[clean] = (countMap[clean] || 0) + 1;
         });
       }
       // 2. From content regex (#...)
-      const matches = post.content?.match(/#[\w\u0E00-\u0E7F]+/g) || [];
+      const contentStr = typeof post.content === 'string' ? post.content : (post.content ? String(post.content) : '');
+      const matches = contentStr.match(/#[\w\u0E00-\u0E7F]+/g) || [];
       matches.forEach(t => {
         countMap[t] = (countMap[t] || 0) + 1;
       });

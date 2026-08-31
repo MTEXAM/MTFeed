@@ -157,11 +157,11 @@ export function UserProfileModal({
         .map(p => ({ post: p, isRepost: false }));
     }
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
+    if (searchQuery && String(searchQuery).trim()) {
+      const q = String(searchQuery).toLowerCase().trim();
       list = list.filter(item => 
-        (item.post?.content && item.post.content.toLowerCase().includes(q)) ||
-        (Array.isArray(item.post?.tags) && item.post.tags.some(t => (t || '').toLowerCase().includes(q)))
+        (item.post?.content && String(item.post.content).toLowerCase().includes(q)) ||
+        (Array.isArray(item.post?.tags) && item.post.tags.some(t => String(t || '').toLowerCase().includes(q)))
       );
     }
 

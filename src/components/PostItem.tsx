@@ -120,10 +120,15 @@ export function PostItem({
     }
   };
 
-  const renderContentWithLinks = (text: string) => {
+  const renderContentWithLinks = (text: any) => {
+    if (text === null || text === undefined) return null;
+    const str = typeof text === 'string' ? text : String(text);
+    if (!str) return null;
+
     // Regex for URLs, hashtags, and mentions
     const tokenRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|#[\w\u0E00-\u0E7F]+|@[\w\u0E00-\u0E7F]+)/g;
-    return text.split(tokenRegex).map((part, i) => {
+    return str.split(tokenRegex).map((part, i) => {
+      if (!part) return null;
       const isUrl = part.startsWith('http://') || part.startsWith('https://') || part.startsWith('www.');
       if (isUrl) {
         const fullUrl = part.startsWith('www.') ? `https://${part}` : part;

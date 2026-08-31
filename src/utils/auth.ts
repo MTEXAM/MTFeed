@@ -122,17 +122,20 @@ export function saveRegisteredUser(user: SessionUser): void {
 }
 
 export function findUserByUsername(username: string): SessionUser | null {
+  if (!username) return null;
   const registry = getRegisteredUsers();
   const clean = username.trim().toLowerCase().replace(/^@/, '');
   for (const uid in registry) {
-    if (registry[uid].username && registry[uid].username.toLowerCase() === clean) {
-      return registry[uid];
+    const u = registry[uid];
+    if (u && u.username && u.username.toLowerCase().replace(/^@/, '') === clean) {
+      return u;
     }
   }
   return null;
 }
 
 export function deleteRegisteredUser(uidOrUsername: string): boolean {
+  if (!uidOrUsername) return false;
   try {
     const registry = getRegisteredUsers();
     const clean = uidOrUsername.trim().toLowerCase().replace(/^@/, '').replace(/^#/, '');
@@ -140,11 +143,12 @@ export function deleteRegisteredUser(uidOrUsername: string): boolean {
     
     for (const key in registry) {
       const u = registry[key];
+      if (!u) continue;
       if (
         key.toLowerCase() === clean ||
         (u.uid && u.uid.toLowerCase().replace(/^#/, '') === clean) ||
         (u.username && u.username.toLowerCase().replace(/^@/, '') === clean) ||
-        (u.id && u.id.toLowerCase() === clean)
+        (u.id && String(u.id).toLowerCase() === clean)
       ) {
         deletedKey = key;
         delete registry[key];
@@ -234,24 +238,25 @@ export function maskUid(uid: string | undefined, currentUser?: { isAdmin?: boole
   return '********';
 }
 
-export function formatUserBadge(user: {
+export function formatUserBadge(user?: {
   isAdmin?: boolean;
   userGroup?: string;
   academicYear?: string;
   badge?: string;
   username?: string;
   uid?: string;
-}): string {
+} | null): string {
+  if (!user) return '';
   if (user.isAdmin) return '👑 Admin';
   
-  if (user.badge && user.badge !== '👑 Admin') {
+  if (user.badge && typeof user.badge === 'string' && user.badge !== '👑 Admin') {
     if (user.badge.includes('นศ.เทคนิคการแพทย์') || user.badge.includes('นักศึกษาเทคนิคการแพทย์')) {
       return '';
     }
     return user.badge;
   }
   
-  if (user.userGroup) {
+  if (user.userGroup && typeof user.userGroup === 'string') {
     const group = user.userGroup.trim();
     if (group.includes('Admin') || group.includes('ผู้ดูแลระบบ')) {
       return '';
@@ -259,7 +264,7 @@ export function formatUserBadge(user: {
     if (group.includes('นศ.เทคนิคการแพทย์') || group.includes('นักศึกษาเทคนิคการแพทย์')) {
       return '';
     }
-    if (user.academicYear && (group.includes('นศ.') || group.includes('นักศึกษา') || group.includes('นักเรียน'))) {
+    if (user.academicYear && typeof user.academicYear === 'string' && (group.includes('นศ.') || group.includes('นักศึกษา') || group.includes('นักเรียน'))) {
       const cleanYear = user.academicYear.replace(/\(.*?\)/g, '').trim();
       return `${group} • ${cleanYear}`;
     }
@@ -296,8 +301,13 @@ export function getBadgeStyle(badge?: string): { bg: string; text: string; borde
 }
 
 export function getAllRegisteredUsersList(): SessionUser[] {
-  const registry = getRegisteredUsers();
-  return Object.values(registry);
+  try {
+    const registry = getRegisteredUsers();
+    if (!registry || typeof registry !== 'object') return Object.values(DEFAULT_ACTIVE_USERS);
+    return Object.values(registry).filter((u): u is SessionUser => Boolean(u && (u.uid || u.username || u.name)));
+  } catch (e) {
+    return Object.values(DEFAULT_ACTIVE_USERS);
+  }
 }
 
 export function resolveUserAccount(params: {

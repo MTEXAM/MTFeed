@@ -17,7 +17,7 @@ import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, 
 import { SessionUser, AppNotification, Post, User } from './types';
 import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid, formatUserBadge, DEFAULT_ACTIVE_USERS } from './utils/auth';
 import { subscribeToPosts, subscribeToUsers, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore, syncPostsToFirestore, getUserFromFirestore, getBackupPostsFromSQLite, getBackupUsersFromSQLite, restoreBackupsToFirestore } from './utils/firestoreService';
-import { fetchFeedFromGoogleSheets, fetchProfileFromGoogleSheets, syncProfileToGoogleSheets, syncPostToGoogleSheets } from './utils/googleSheetsService';
+import { fetchFeedFromGoogleSheets, fetchProfileFromGoogleSheets, syncProfileToGoogleSheets, syncPostToGoogleSheets, extractProfilesFromSheetPosts } from './utils/googleSheetsService';
 import { formatRealTime } from './utils/timeUtils';
 import { INITIAL_POSTS } from './data';
 
@@ -45,8 +45,11 @@ function getInitialUser(): SessionUser | null {
     let params: URLSearchParams | null = null;
     if (window.location.search) {
       params = new URLSearchParams(window.location.search);
-    } else if (window.location.hash && window.location.hash.includes('?')) {
-      params = new URLSearchParams(window.location.hash.split('?')[1]);
+    } else if (typeof window.location.hash === 'string' && window.location.hash.includes('?')) {
+      const parts = window.location.hash.split('?');
+      if (parts[1]) {
+        params = new URLSearchParams(parts[1]);
+      }
     }
 
     if (params) {
@@ -73,7 +76,8 @@ function getInitialUser(): SessionUser | null {
     // B. ALWAYS strip ALL parameters from URL as secondary backup (just in case)
     if (params && (hasCredentials || params.has('post') || params.has('postId') || params.has('post_id'))) {
       try {
-        const cleanUrl = window.location.pathname + (window.location.hash ? window.location.hash.split('?')[0] : '');
+        const hashStr = typeof window.location.hash === 'string' ? window.location.hash : '';
+        const cleanUrl = window.location.pathname + (hashStr ? hashStr.split('?')[0] : '');
         window.history.replaceState({}, document.title, cleanUrl);
         console.log('Backup URL Stripping: Successfully sanitized address bar!');
       } catch (e) {
@@ -192,10 +196,15 @@ export default function App() {
 
   // Real Registered Users state
   const [registeredUsers, setRegisteredUsers] = useState<SessionUser[]>(() => {
-    const list = getAllRegisteredUsersList();
+    const list = getAllRegisteredUsersList() || [];
     const currentUser = getInitialUser();
     if (currentUser) {
-      const exists = list.some(u => u.username.toLowerCase() === currentUser.username.toLowerCase() || u.uid === currentUser.uid);
+      const curUName = (currentUser.username || '').toLowerCase();
+      const exists = list.some(u => {
+        if (!u) return false;
+        const uName = (u.username || '').toLowerCase();
+        return (curUName && uName === curUName) || (currentUser.uid && u.uid === currentUser.uid);
+      });
       if (!exists) list.push(currentUser);
     }
     return list;
@@ -381,6 +390,110 @@ export default function App() {
     hydrateUser();
   }, []);
 
+  const [isSyncingSheets, setIsSyncingSheets] = useState(false);
+  const isSyncingSheetsRef = useRef(false);
+
+  const performSheetsSync = async (isManual = false) => {
+    if (isSyncingSheetsRef.current) return;
+    isSyncingSheetsRef.current = true;
+    if (isManual) setIsSyncingSheets(true);
+
+    try {
+      console.log('[GOOGLE SHEETS SYNC] Polling latest changes from Google Sheets...');
+      const sheetPosts = await fetchFeedFromGoogleSheets();
+      if (sheetPosts && sheetPosts.length > 0) {
+        setPosts(prevPosts => {
+          const merged = mergePostsLists(sheetPosts, prevPosts);
+          try {
+            localStorage.setItem('mtfeed_posts', JSON.stringify(merged));
+          } catch (e) {}
+          return merged;
+        });
+
+        // Extract registered profiles from sheet posts
+        const sheetProfiles = extractProfilesFromSheetPosts(sheetPosts);
+        if (sheetProfiles.length > 0) {
+          setRegisteredUsers(prev => {
+            const regMap: Record<string, SessionUser> = {};
+            prev.forEach(u => {
+              const key = (u.uid || u.username || u.id || '').toLowerCase();
+              if (key) regMap[key] = u;
+            });
+            sheetProfiles.forEach(sp => {
+              const key = (sp.uid || sp.username || sp.id || '').toLowerCase();
+              if (key) {
+                const existing = regMap[key];
+                if (!existing || (sp.updatedAt || 0) >= (existing.updatedAt || 0) || sp.name !== existing.name || sp.avatar !== existing.avatar) {
+                  regMap[key] = { ...(existing || {}), ...sp };
+                }
+              }
+            });
+            const mergedList = Object.values(regMap);
+            try {
+              localStorage.setItem('mtfeed_accounts_registry', JSON.stringify(regMap));
+            } catch (e) {}
+            return mergedList;
+          });
+        }
+      }
+
+      // Check current user profile from Google Sheets
+      if (user && (user.uid || user.id)) {
+        const sheetProfile = await fetchProfileFromGoogleSheets(user.uid || user.id || '');
+        if (sheetProfile) {
+          setUser(prev => {
+            if (!prev) return prev;
+            if (prev.name !== sheetProfile.name || prev.avatar !== sheetProfile.avatar || prev.username !== sheetProfile.username) {
+              console.log('[GOOGLE SHEETS SYNC] User profile updated from Sheet:', sheetProfile.name);
+              const updated = { ...prev, ...sheetProfile, name: sheetProfile.name || prev.name, avatar: sheetProfile.avatar || prev.avatar };
+              try {
+                localStorage.setItem('mtfeed_user', JSON.stringify(updated));
+                sessionStorage.setItem('mtfeed_user', JSON.stringify(updated));
+              } catch (e) {}
+              return updated;
+            }
+            return prev;
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[GOOGLE SHEETS SYNC] Sync error:', err);
+    } finally {
+      isSyncingSheetsRef.current = false;
+      if (isManual) {
+        setTimeout(() => setIsSyncingSheets(false), 600);
+      }
+    }
+  };
+
+  // Google Sheets Auto-Sync: Periodic background polling (every 8s) & Instant refresh on Tab focus
+  useEffect(() => {
+    performSheetsSync(false);
+
+    const intervalId = setInterval(() => {
+      performSheetsSync(false);
+    }, 8000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        performSheetsSync(true);
+      }
+    };
+
+    const handleFocus = () => {
+      performSheetsSync(false);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [user?.uid]);
+
   // Tier 1 Google Sheets & Tier 2 SQLite Backup: Load backups on startup and trigger Throttled Self-Healing back-sync
   useEffect(() => {
     let backupPostsList: Post[] = [];
@@ -550,8 +663,11 @@ export default function App() {
 
     if (window.location.search) {
       params = new URLSearchParams(window.location.search);
-    } else if (window.location.hash && window.location.hash.includes('?')) {
-      params = new URLSearchParams(window.location.hash.split('?')[1]);
+    } else if (typeof window.location.hash === 'string' && window.location.hash.includes('?')) {
+      const parts = window.location.hash.split('?');
+      if (parts[1]) {
+        params = new URLSearchParams(parts[1]);
+      }
     }
     
     if (typeof window !== 'undefined') {
@@ -641,9 +757,13 @@ export default function App() {
     // Also update existing posts & comments in memory AND persist to localStorage and Firestore
     setPosts(prevPosts => {
       const updated = prevPosts.map(p => {
-        const isAuthor = (
-          (p.author.username && user.username && p.author.username.replace(/^@/, '').toLowerCase() === user.username.replace(/^@/, '').toLowerCase()) ||
-          (p.author.id && user.uid && p.author.id === user.uid)
+        if (!p || !p.author) return p;
+        const pAuthorUName = (p.author.username || '').replace(/^@/, '').toLowerCase();
+        const userUName = (user?.username || '').replace(/^@/, '').toLowerCase();
+        const isAuthor = Boolean(
+          (pAuthorUName && userUName && pAuthorUName === userUName) ||
+          (p.author.id && user?.uid && p.author.id === user.uid) ||
+          (p.author.id && user?.id && p.author.id === user.id)
         );
         let postChanged = false;
         let newAuthor = p.author;
@@ -656,9 +776,11 @@ export default function App() {
           };
         }
         const updatedComments = (p.comments || []).map(c => {
-          const isCommentAuthor = (
-            (c.author.username && user.username && c.author.username.replace(/^@/, '').toLowerCase() === user.username.replace(/^@/, '').toLowerCase()) ||
-            (c.author.id && user.uid && c.author.id === user.uid)
+          if (!c || !c.author) return c;
+          const cAuthorUName = (c.author.username || '').replace(/^@/, '').toLowerCase();
+          const isCommentAuthor = Boolean(
+            (cAuthorUName && userUName && cAuthorUName === userUName) ||
+            (c.author.id && user?.uid && c.author.id === user.uid)
           );
           if (isCommentAuthor) {
             postChanged = true;
@@ -717,10 +839,12 @@ export default function App() {
 
   // Admin & User Delete Post Function
   const handleDeletePost = async (postId: string) => {
-    const targetPost = posts.find(p => p.id === postId);
-    if (targetPost) {
+    const targetPost = posts.find(p => p && p.id === postId);
+    if (targetPost && targetPost.author) {
+      const uName = (user?.username || '').replace(/^@/, '').toLowerCase();
+      const targetAuthorUName = (targetPost.author.username || '').replace(/^@/, '').toLowerCase();
       const isOwner = Boolean(user && (
-        (user.username && targetPost.author.username && user.username.replace(/^@/, '').toLowerCase() === targetPost.author.username.replace(/^@/, '').toLowerCase()) ||
+        (uName && targetAuthorUName && uName === targetAuthorUName) ||
         (user.uid && targetPost.author.id && user.uid === targetPost.author.id) ||
         (user.id && targetPost.author.id && user.id === targetPost.author.id)
       ));
@@ -734,13 +858,13 @@ export default function App() {
     markPostAsDeletedLocally(postId);
 
     setPosts(prev => {
-      const filtered = prev.filter(p => p.id !== postId);
+      const filtered = prev.filter(p => p && p.id !== postId);
       try {
         localStorage.setItem('mtfeed_posts', JSON.stringify(filtered));
       } catch (e) {}
       return filtered;
     });
-    await deletePostFromFirestore(postId);
+    await deletePostFromFirestore(postId, targetPost?.content, user?.uid || (targetPost?.author as any)?.uid);
   };
 
   // Admin Delete User Function
@@ -755,7 +879,9 @@ export default function App() {
     setRegisteredUsers(updatedUsers);
 
     // If current logged-in user was deleted, log out
-    if (user && (user.uid === uidOrUsername || user.username.toLowerCase() === uidOrUsername.toLowerCase())) {
+    const cleanTarget = (uidOrUsername || '').toLowerCase();
+    const curUName = (user.username || '').toLowerCase();
+    if (user && (user.uid === uidOrUsername || (curUName && curUName === cleanTarget))) {
       handleLogout();
     }
   };
@@ -1007,16 +1133,21 @@ export default function App() {
     if (!n.recipientUsername) return true; // public system notifications
     if (n.recipientUsername === 'admin' && user?.isAdmin) return true; // admin report notifications
     if (!user) return false;
-    return n.recipientUsername === user.username.toLowerCase() || n.recipientUsername === user.uid.toLowerCase();
+    const uName = (user.username || '').toLowerCase();
+    const uUid = (user.uid || '').toLowerCase();
+    const target = (n.recipientUsername || '').toLowerCase();
+    return (uName && target === uName) || (uUid && target === uUid);
   });
 
   const unreadNotificationsCount = relevantNotifications.filter(n => !n.read).length;
 
   const mappedPosts = React.useMemo(() => {
-    return posts.map(post => {
-      const isLiked = user ? (post.likedBy || []).includes(user.uid) : false;
-      const isBookmarked = user ? (post.bookmarkedBy || []).includes(user.uid) : false;
-      const isReposted = user ? (post.repostedBy || []).some((username: string) => username.toLowerCase() === user.username.toLowerCase()) : false;
+    return (posts || []).filter(Boolean).map(post => {
+      const isLiked = Boolean(user?.uid && (post.likedBy || []).includes(user.uid));
+      const isBookmarked = Boolean(user?.uid && (post.bookmarkedBy || []).includes(user.uid));
+      const isReposted = Boolean(
+        user?.username && (post.repostedBy || []).some((username: string) => (username || '').toLowerCase() === (user.username || '').toLowerCase())
+      );
       
       return {
         ...post,
@@ -1084,6 +1215,8 @@ export default function App() {
         unreadCount={unreadNotificationsCount}
         onOpenNotifications={() => setIsNotificationsModalOpen(true)}
         onExternalLinkClick={handleOpenExternalUrl}
+        isSyncingSheets={isSyncingSheets}
+        onRefreshSheets={() => performSheetsSync(true)}
       />
       
       {sharedPostId ? (

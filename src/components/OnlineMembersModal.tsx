@@ -38,12 +38,16 @@ export function OnlineMembersModal({
   // Combine current user + registered accounts from registry (de-duplicated by username or uid)
   const usersMap = new Map<string, SessionUser>();
 
-  if (currentUser) {
-    usersMap.set(currentUser.username.toLowerCase(), currentUser);
+  if (currentUser && (currentUser.username || currentUser.uid)) {
+    const key = String(currentUser.username || currentUser.uid).toLowerCase();
+    usersMap.set(key, currentUser);
   }
 
-  registeredUsers.forEach(u => {
-    const key = (u.username || u.uid).toLowerCase();
+  (registeredUsers || []).forEach(u => {
+    if (!u) return;
+    const rawKey = u.username || u.uid || (u as any).id;
+    if (!rawKey) return;
+    const key = String(rawKey).toLowerCase();
     if (!usersMap.has(key)) {
       usersMap.set(key, u);
     }
@@ -261,7 +265,14 @@ export function OnlineMembersModal({
             </div>
           ) : (
             displayList.map((member) => {
-              const isSelf = currentUser && (member.username.toLowerCase() === currentUser.username.toLowerCase() || member.uid === currentUser.uid);
+              const memUName = String(member.username || '').toLowerCase();
+              const curUName = String(currentUser?.username || '').toLowerCase();
+              const isSelf = Boolean(
+                currentUser && (
+                  (memUName && curUName && memUName === curUName) ||
+                  (member.uid && currentUser.uid && member.uid === currentUser.uid)
+                )
+              );
               const badgeText = formatUserBadge(member);
               const style = getBadgeStyle(badgeText);
 

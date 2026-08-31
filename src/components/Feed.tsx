@@ -143,7 +143,7 @@ export function Feed({
         return updated;
       });
     }
-    deletePostFromFirestore(postId);
+    deletePostFromFirestore(postId, postToDelete?.content, user?.uid || (postToDelete?.author as any)?.uid);
   };
 
   const handleReportPost = (postId: string) => {
@@ -429,25 +429,30 @@ export function Feed({
   };
 
   const getFilteredPosts = () => {
-    let result = posts;
+    let result = (posts || []).filter(Boolean);
 
     // Filter by selected tag/trend
     if (selectedTag) {
-      const cleanTag = selectedTag.trim().toLowerCase();
+      const cleanTag = String(selectedTag || '').trim().toLowerCase();
       result = result.filter(post => {
-        const inTags = post.tags && post.tags.some(t => t.toLowerCase() === cleanTag || t.toLowerCase().includes(cleanTag.replace('#', '')));
-        const inContent = post.content && (post.content.toLowerCase().includes(cleanTag) || post.content.toLowerCase().includes(cleanTag.replace('#', '')));
+        if (!post) return false;
+        const inTags = Array.isArray(post.tags) && post.tags.some(t => {
+          const s = String(t || '').toLowerCase();
+          return s === cleanTag || s.includes(cleanTag.replace('#', ''));
+        });
+        const contentStr = String(post.content || '').toLowerCase();
+        const inContent = contentStr.includes(cleanTag) || contentStr.includes(cleanTag.replace('#', ''));
         return inTags || inContent;
       });
     }
 
     // Filter by search query
-    if (searchQuery && searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
+    if (searchQuery && String(searchQuery).trim()) {
+      const q = String(searchQuery).trim().toLowerCase();
       result = result.filter(post => {
         if (!post) return false;
-        const contentMatch = post.content?.toLowerCase().includes(q);
-        const tagsMatch = Array.isArray(post.tags) && post.tags.some(t => (t || '').toLowerCase().includes(q));
+        const contentMatch = String(post.content || '').toLowerCase().includes(q);
+        const tagsMatch = Array.isArray(post.tags) && post.tags.some(t => String(t || '').toLowerCase().includes(q));
         return contentMatch || tagsMatch;
       });
     }

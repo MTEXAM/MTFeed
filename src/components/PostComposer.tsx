@@ -56,14 +56,15 @@ export function PostComposer({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!content.trim() && !image) return;
+    const trimmedContent = (content || '').trim();
+    if (!trimmedContent && !image) return;
     
     let pollData;
-    if (showPoll && pollOptions.filter(o => o.trim()).length >= 2) {
+    if (showPoll && pollOptions.filter(o => typeof o === 'string' && o.trim()).length >= 2) {
       pollData = {
-        options: pollOptions.filter(o => o.trim()).map((opt, i) => ({
+        options: pollOptions.filter(o => typeof o === 'string' && o.trim()).map((opt, i) => ({
           id: `opt_${i}`,
-          text: opt,
+          text: opt.trim(),
           votes: 0
         })),
         expiresAt: 'พรุ่งนี้',
@@ -71,7 +72,7 @@ export function PostComposer({
       };
     }
     
-    onPost(content, isAnonymous, image, pollData);
+    onPost(trimmedContent, isAnonymous, image, pollData);
     setContent('');
     setIsAnonymous(false);
     setImage(undefined);
