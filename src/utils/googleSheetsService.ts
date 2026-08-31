@@ -71,10 +71,12 @@ export async function syncPostToGoogleSheets(post: Post): Promise<boolean> {
     return true;
   }
 
+  const contentWithImage = post.image ? `${post.content}\n${post.image}` : post.content;
+
   const payload = {
     action: 'createPost',
     uid: (post.author as any)?.uid || post.author?.id || '#MED68001',
-    content: post.content,
+    content: contentWithImage,
     image: post.image || ''
   };
 
@@ -256,6 +258,18 @@ function mapSheetFeedToPosts(sheetRows: any[]): Post[] {
       ? String(row.postId)
       : (row.timestamp ? `sheet_time_${new Date(row.timestamp).getTime()}` : `sheet_row_${idx}`);
 
+    let contentStr = typeof row.content === 'string' ? row.content : (row.content ? String(row.content) : '');
+    let extractedImage = row.image || undefined;
+    
+    if (!extractedImage) {
+      const imageMatch = contentStr.match(/(https?:\/\/[^\s]+(?:jpg|jpeg|png|gif|webp|unsplash\.com)[^\s]*)/i);
+      if (imageMatch) {
+        extractedImage = imageMatch[0];
+        // Clean up the URL from the end of the text if we added it there
+        contentStr = contentStr.replace(extractedImage, '').trim();
+      }
+    }
+
     return {
       id: stableId,
       author: {
@@ -264,13 +278,14 @@ function mapSheetFeedToPosts(sheetRows: any[]): Post[] {
         name: displayName,
         username: username,
         avatar: avatar,
-        userGroup: '🔬 นักเทคนิคการแพทย์',
-        academicYear: 'ปี 4',
-        faculty: 'คณะเทคนิคการแพทย์'
+        ...(row.userGroup ? { userGroup: row.userGroup } : {}),
+        ...(row.academicYear ? { academicYear: row.academicYear } : {}),
+        ...(row.faculty ? { faculty: row.faculty } : {}),
+        ...(row.isAdmin ? { isAdmin: row.isAdmin, badge: '👑 Admin' } : {})
       },
-      content: typeof row.content === 'string' ? row.content : (row.content ? String(row.content) : ''),
-      image: row.image || undefined,
-      tags: typeof row.content === 'string' ? (row.content.match(/#[\w\u0E00-\u0E7F]+/g) || []) : [],
+      content: contentStr,
+      image: extractedImage,
+      tags: typeof contentStr === 'string' ? (contentStr.match(/#[\w\u0E00-\u0E7F]+/g) || []) : [],
       createdAt: dateFormatted,
       createdAtMs: rawTime,
       stats: {
@@ -295,18 +310,21 @@ export function extractProfilesFromSheetPosts(sheetPosts: Post[]): SessionUser[]
         const uid = String(authorAny.uid || p.author.id);
         const key = uid.toLowerCase();
         if (!userMap.has(key)) {
-          userMap.set(key, {
+          const profile: any = {
             id: uid,
             uid: uid,
             username: (p.author.username || 'user').replace(/^@/, ''),
             name: p.author.name || 'User',
             avatar: p.author.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(p.author.username || 'user')}`,
-            isAdmin: false,
-            userGroup: authorAny.userGroup || '🔬 นักเทคนิคการแพทย์',
-            academicYear: authorAny.academicYear || 'ปี 4',
-            faculty: authorAny.faculty || 'คณะเทคนิคการแพทย์',
             updatedAt: p.createdAtMs || Date.now()
-          });
+          };
+          if (authorAny.isAdmin !== undefined) profile.isAdmin = authorAny.isAdmin;
+          if (authorAny.userGroup) profile.userGroup = authorAny.userGroup;
+          if (authorAny.academicYear) profile.academicYear = authorAny.academicYear;
+          if (authorAny.faculty) profile.faculty = authorAny.faculty;
+          if (authorAny.badge) profile.badge = authorAny.badge;
+          
+          userMap.set(key, profile as SessionUser);
         }
       }
     }

@@ -337,14 +337,14 @@ export function resolveUserAccount(params: {
   const rawRole = (params.role || '').toLowerCase().trim();
   const isRequestingAdmin = rawRole === 'admin' || rawRole === 'true' || rawRole === '1';
 
-  // 2. เฉพาะกรณีที่ uid === "MED68001" เท่านั้นที่จะยอมรับสิทธิ์ให้เป็น "admin" ได้
-  const isValidAdminUid = uid === 'MED68001';
+  // 2. เฉพาะกรณีที่ uid === "MED68001" หรือ "#MED68001" เท่านั้นที่จะยอมรับสิทธิ์ให้เป็น "admin" ได้
+  const isValidAdminUid = uid === 'MED68001' || uid === '#MED68001';
 
   // 3. หากส่ง role=admin มาแต่ uid ไม่ใช่ "MED68001" ให้ทำการดาวน์เกรดเป็นผู้ใช้ทั่วไปทันที
   let validatedRole = 'user';
   let isAdmin = false;
 
-  if (isRequestingAdmin && isValidAdminUid) {
+  if (isValidAdminUid || (isRequestingAdmin && isValidAdminUid)) {
     validatedRole = 'admin';
     isAdmin = true;
   } else {

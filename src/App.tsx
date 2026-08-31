@@ -86,15 +86,29 @@ function getInitialUser(): SessionUser | null {
     }
     
     // C. Check storage for an existing session first (to persist current user)
+    const upgradeIfAdmin = (parsed: any) => {
+      const isMedAdmin = parsed.uid === 'MED68001' || parsed.uid === '#MED68001' || parsed.id === 'MED68001' || parsed.id === '#MED68001';
+      if (isMedAdmin && !parsed.isAdmin) {
+        parsed.isAdmin = true;
+        parsed.badge = '👑 Admin';
+        parsed.userGroup = '👑 Admin';
+        parsed.username = '👑Admin';
+        parsed.name = '👑 Admin';
+        if (typeof localStorage !== 'undefined') localStorage.setItem('mtfeed_user', JSON.stringify(parsed));
+      }
+      return parsed;
+    };
+
     const sessionData = sessionStorage.getItem('mtfeed_user');
     if (sessionData) {
-      return JSON.parse(sessionData);
+      return upgradeIfAdmin(JSON.parse(sessionData));
     }
     const localData = localStorage.getItem('mtfeed_user');
     if (localData) {
       const parsed = JSON.parse(localData);
-      sessionStorage.setItem('mtfeed_user', localData);
-      return parsed;
+      const upgraded = upgradeIfAdmin(parsed);
+      sessionStorage.setItem('mtfeed_user', JSON.stringify(upgraded));
+      return upgraded;
     }
 
     // D. If no session exists, attempt auto-login from credentials if from trusted referrer

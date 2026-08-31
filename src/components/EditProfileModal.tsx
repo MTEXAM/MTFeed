@@ -106,12 +106,7 @@ export function EditProfileModal({
 
     onSaveProfile({
       name: name.trim() || currentUser.username,
-      avatar: avatar.trim() || defaultAvatar,
-      userGroup: '',
-      academicYear: '',
-      faculty: '',
-      university: '',
-      badge: ''
+      avatar: avatar.trim() || defaultAvatar
     });
 
     setSaveSuccess(true);
