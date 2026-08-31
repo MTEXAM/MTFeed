@@ -62,10 +62,10 @@ export const DEFAULT_ACTIVE_USERS: Record<string, SessionUser> = {
     name: 'จิรภรณ์ ตรวจเลือด',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=jiraporn_med',
     isAdmin: false,
-    userGroup: '🔬 นักเทคนิคการแพทย์',
+    userGroup: '',
     academicYear: 'ปี 4',
     faculty: 'คณะเทคนิคการแพทย์',
-    badge: '🔬 นักเทคนิคการแพทย์'
+    badge: ''
   },
   'MED67890': {
     uid: 'MED67890',
@@ -73,10 +73,10 @@ export const DEFAULT_ACTIVE_USERS: Record<string, SessionUser> = {
     name: 'กนกวรรณ เตรียมสอบ',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=kanokwan_exam',
     isAdmin: false,
-    userGroup: '📝 เตรียมสอบสภาฯ',
+    userGroup: '',
     academicYear: 'ปี 4',
     faculty: 'คณะเทคนิคการแพทย์',
-    badge: '📝 เตรียมสอบสภาฯ'
+    badge: ''
   }
 };
 
@@ -238,40 +238,10 @@ export function maskUid(uid: string | undefined, currentUser?: { isAdmin?: boole
   return '********';
 }
 
-export function formatUserBadge(user?: {
-  isAdmin?: boolean;
-  userGroup?: string;
-  academicYear?: string;
-  badge?: string;
-  username?: string;
-  uid?: string;
-} | null): string {
-  if (!user) return '';
-  if (user.isAdmin) return '👑 Admin';
-  
-  if (user.badge && typeof user.badge === 'string' && user.badge !== '👑 Admin') {
-    if (user.badge.includes('นศ.เทคนิคการแพทย์') || user.badge.includes('นักศึกษาเทคนิคการแพทย์')) {
-      return '';
-    }
-    return user.badge;
-  }
-  
-  if (user.userGroup && typeof user.userGroup === 'string') {
-    const group = user.userGroup.trim();
-    if (group.includes('Admin') || group.includes('ผู้ดูแลระบบ')) {
-      return '';
-    }
-    if (group.includes('นศ.เทคนิคการแพทย์') || group.includes('นักศึกษาเทคนิคการแพทย์')) {
-      return '';
-    }
-    if (user.academicYear && typeof user.academicYear === 'string' && (group.includes('นศ.') || group.includes('นักศึกษา') || group.includes('นักเรียน'))) {
-      const cleanYear = user.academicYear.replace(/\(.*?\)/g, '').trim();
-      return `${group} • ${cleanYear}`;
-    }
-    return group;
-  }
-  
-  return '';
+export function formatUserBadge(user?: { isAdmin?: boolean; userGroup?: string; academicYear?: string; badge?: string; username?: string; uid?: string; } | null): string {
+  if (!user) return "";
+  if (user.isAdmin) return "👑 Admin";
+  return "";
 }
 
 export function getBadgeStyle(badge?: string): { bg: string; text: string; border: string } {

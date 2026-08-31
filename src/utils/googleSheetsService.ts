@@ -361,9 +361,9 @@ export async function fetchProfileFromGoogleSheets(uid: string): Promise<Session
             name: json.data.displayName || json.data.username || 'User',
             avatar: json.data.profileImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(json.data.username || 'user')}`,
             isAdmin: false,
-            userGroup: '🔬 นักเทคนิคการแพทย์',
-            academicYear: 'ปี 4',
-            faculty: 'คณะเทคนิคการแพทย์',
+            userGroup: '',
+            academicYear: '',
+            faculty: '',
             updatedAt: Date.now()
           };
         }
@@ -387,9 +387,9 @@ export async function fetchProfileFromGoogleSheets(uid: string): Promise<Session
             name: json.data.displayName || json.data.username || 'User',
             avatar: json.data.profileImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(json.data.username || 'user')}`,
             isAdmin: false,
-            userGroup: '🔬 นักเทคนิคการแพทย์',
-            academicYear: 'ปี 4',
-            faculty: 'คณะเทคนิคการแพทย์',
+            userGroup: '',
+            academicYear: '',
+            faculty: '',
             updatedAt: Date.now()
           };
         }
