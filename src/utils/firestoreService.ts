@@ -296,12 +296,22 @@ export function markPostAsDeletedLocally(postId: string) {
 export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): Post[] {
   const deletedIds = getDeletedPostIds();
   const map = new Map<string, Post>();
+  const contentMap = new Map<string, string>(); // Maps contentKey -> authoritative post ID
+
+  // Helper to generate a unique key for a post's content and author
+  const getContentKey = (p: Post) => {
+    const authorUid = (p.author as any)?.uid || p.author?.id || 'unknown';
+    const contentHash = (p.content || '').trim().substring(0, 150).toLowerCase(); // Check first 150 chars
+    // Group by author and content, ignoring minor time differences (e.g., within 1 minute)
+    return `${authorUid}_${contentHash}`;
+  };
 
   // 1. Add cloud/incoming posts first (authoritative)
   if (Array.isArray(incomingPosts)) {
     incomingPosts.forEach(p => {
       if (p && p.id && !deletedIds.has(p.id)) {
         map.set(p.id, p);
+        contentMap.set(getContentKey(p), p.id);
       }
     });
   }
@@ -310,14 +320,22 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
   if (Array.isArray(existingPosts)) {
     existingPosts.forEach(p => {
       if (p && p.id && !deletedIds.has(p.id)) {
-        if (!map.has(p.id)) {
+        const cKey = getContentKey(p);
+        
+        // Check if this post is a duplicate of a cloud post but under a different ID
+        const isDuplicateWithDifferentId = contentMap.has(cKey) && contentMap.get(cKey) !== p.id;
+        // If it's a duplicate, we treat the cloud ID as the authoritative one
+        const targetId = isDuplicateWithDifferentId ? contentMap.get(cKey)! : p.id;
+
+        if (!map.has(targetId)) {
           // Keep local post so user content is NEVER lost
-          map.set(p.id, p);
+          map.set(targetId, p);
+          contentMap.set(cKey, targetId);
           // Sync missing post to Firestore in background
           savePostToFirestore(p).catch(() => {});
         } else {
           // Merge local comments and interactions if newer
-          const cloudPost = map.get(p.id)!;
+          const cloudPost = map.get(targetId)!;
           const mergedCommentsMap = new Map<string, Comment>();
           (cloudPost.comments || []).forEach(c => c && c.id && mergedCommentsMap.set(c.id, c));
           (p.comments || []).forEach(c => c && c.id && mergedCommentsMap.set(c.id, c));
@@ -350,7 +368,7 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
             ? mergedRepostedBy.length 
             : (cloudPost.stats?.reposts || 0);
 
-          map.set(p.id, {
+          map.set(targetId, {
             ...cloudPost,
             comments: mergedComments,
             likedBy: mergedLikedBy,

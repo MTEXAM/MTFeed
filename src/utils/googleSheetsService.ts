@@ -287,22 +287,25 @@ function mapSheetFeedToPosts(sheetRows: any[]): Post[] {
 export function extractProfilesFromSheetPosts(sheetPosts: Post[]): SessionUser[] {
   const userMap = new Map<string, SessionUser>();
   (sheetPosts || []).forEach(p => {
-    if (p && p.author && (p.author.uid || p.author.id)) {
-      const uid = String(p.author.uid || p.author.id);
-      const key = uid.toLowerCase();
-      if (!userMap.has(key)) {
-        userMap.set(key, {
-          id: uid,
-          uid: uid,
-          username: (p.author.username || 'user').replace(/^@/, ''),
-          name: p.author.name || 'User',
-          avatar: p.author.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(p.author.username || 'user')}`,
-          isAdmin: false,
-          userGroup: p.author.userGroup || '🔬 นักเทคนิคการแพทย์',
-          academicYear: p.author.academicYear || 'ปี 4',
-          faculty: p.author.faculty || 'คณะเทคนิคการแพทย์',
-          updatedAt: p.createdAtMs || Date.now()
-        });
+    if (p && p.author) {
+      const authorAny = p.author as any;
+      if (authorAny.uid || p.author.id) {
+        const uid = String(authorAny.uid || p.author.id);
+        const key = uid.toLowerCase();
+        if (!userMap.has(key)) {
+          userMap.set(key, {
+            id: uid,
+            uid: uid,
+            username: (p.author.username || 'user').replace(/^@/, ''),
+            name: p.author.name || 'User',
+            avatar: p.author.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(p.author.username || 'user')}`,
+            isAdmin: false,
+            userGroup: authorAny.userGroup || '🔬 นักเทคนิคการแพทย์',
+            academicYear: authorAny.academicYear || 'ปี 4',
+            faculty: authorAny.faculty || 'คณะเทคนิคการแพทย์',
+            updatedAt: p.createdAtMs || Date.now()
+          });
+        }
       }
     }
   });
