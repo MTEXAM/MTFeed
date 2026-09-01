@@ -403,7 +403,9 @@ async function startServer() {
               action: 'createPost',
               uid: payload.uid || '#MED68001',
               content: payload.content || '',
-              image: payload.image || ''
+              image: payload.image || '',
+              pdfName: payload.pdfName || '',
+              pdfData: payload.pdfData || ''
             })
           });
           const result = await resp.json().catch(() => ({}));
