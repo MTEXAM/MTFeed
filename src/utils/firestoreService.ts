@@ -379,10 +379,20 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
             ? mergedRepostedBy.length 
             : (cloudPost.stats?.reposts || 0);
 
+          const bestImage = (p.image && p.image.length > 10) 
+            ? p.image 
+            : ((cloudPost.image && cloudPost.image.length > 10) ? cloudPost.image : '');
+
+          const bestPdf = (p.pdf && p.pdf.dataUrl && p.pdf.dataUrl.length > 10)
+            ? p.pdf
+            : ((cloudPost.pdf && cloudPost.pdf.dataUrl && cloudPost.pdf.dataUrl.length > 10)
+                ? cloudPost.pdf
+                : (p.pdf?.name ? p.pdf : cloudPost.pdf));
+
           map.set(targetId, {
             ...cloudPost,
-            image: (p.image && p.image.length > 10) ? p.image : (cloudPost.image || ''),
-            pdf: (p.pdf && p.pdf.dataUrl) ? p.pdf : (cloudPost.pdf || undefined),
+            image: bestImage,
+            pdf: bestPdf,
             comments: mergedComments,
             likedBy: mergedLikedBy,
             bookmarkedBy: mergedBookmarkedBy,
