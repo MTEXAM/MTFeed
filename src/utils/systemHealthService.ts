@@ -121,22 +121,30 @@ class SystemHealthManager {
     }
   }
 
+  private lastToastTime = 0;
+
   private handleStatusTransition(prev: SystemHealthState['overallStatus'], next: SystemHealthState['overallStatus']) {
-    if (next === 'fallback_active') {
+    const now = Date.now();
+    // Throttle toasts to at most once every 30 seconds to prevent notification loops
+    if (now - this.lastToastTime < 30000) {
+      return;
+    }
+
+    if (next === 'fallback_active' && prev === 'healthy') {
+      this.lastToastTime = now;
       const msg = '⚡ สลับใช้ระบบสำรองข้อมูลอัตโนมัติ (Google Sheets & SQLite)';
-      const sub = 'ระบบหลักขัดข้องชั่วคราว ข้อมูลของคุณได้รับการปกป้อง 100% ไม่สูญหาย';
+      const sub = 'ระบบหลักขัดข้องชั่วคราว ข้อมูลของคุณได้รับการปกป้อง 100%';
       this.emitToast('warning', msg, sub);
-      this.emitSystemNotification('โหมดสำรองฉุกเฉินทำงาน', 'ระบบตรวจพบความหน่วงหรือการขัดข้อง จึงเปิดใช้งานระบบสำรองอัตโนมัติ ข้อมูลทุกอย่างปลอดภัยและยังคงโพสต์/ใช้งานได้ตามปกติ');
-    } else if (next === 'offline_mode') {
+    } else if (next === 'offline_mode' && prev !== 'offline_mode') {
+      this.lastToastTime = now;
       const msg = '📡 กำลังทำงานในโหมดออฟไลน์ (Offline-First)';
-      const sub = 'คุณยังสามารถดูและสร้างโพสต์ได้ตามปกติ ระบบจะซิงก์กลับทันทีที่ต่ออินเทอร์เน็ต';
+      const sub = 'คุณยังสามารถใช้งานและสร้างโพสต์ได้ตามปกติ';
       this.emitToast('info', msg, sub);
-      this.emitSystemNotification('โหมดออฟไลน์ทำงาน', 'อุปกรณ์ของคุณตัดการเชื่อมต่ออินเทอร์เน็ต ข้อมูลใหม่จะถูกเก็บในแคชที่ปลอดภัยและส่งอัตโนมัติเมื่อออนไลน์');
     } else if (next === 'healthy' && (prev === 'fallback_active' || prev === 'offline_mode')) {
+      this.lastToastTime = now;
       const msg = '✅ ทุกระบบหลักเชื่อมต่อสมบูรณ์ 100%';
       const sub = 'ข้อมูลทั้งหมดถูกตรวจสอบและสมานตรงกันเรียบร้อยแล้ว';
       this.emitToast('success', msg, sub);
-      this.emitSystemNotification('ระบบกลับสู่สภาวะปกติสมบูรณ์', 'ระบบ Cloud และฐานข้อมูลทุกชั้นเชื่อมต่อและสมานข้อมูล (Self-Healing) เรียบร้อยแล้ว');
       this.drainOutbox();
     }
   }

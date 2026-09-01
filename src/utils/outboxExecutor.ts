@@ -59,7 +59,7 @@ export async function executeOutboxAction(item: OutboxItem): Promise<boolean> {
       case 'SEND_BROADCAST': {
         const broadcast = item.payload;
         if (broadcast && broadcast.title) {
-          await sendSystemBroadcastToFirestore(broadcast);
+          await sendSystemBroadcastToFirestore(broadcast, true);
           systemHealthManager.reportFirestoreSuccess();
         }
         return true;

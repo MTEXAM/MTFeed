@@ -801,7 +801,7 @@ export async function sendSystemBroadcastToFirestore(broadcast: {
   createdAtMs?: number;
   read?: boolean;
   [key: string]: any;
-}): Promise<AppNotification> {
+}, isFromOutbox = false): Promise<AppNotification> {
   const nowMs = broadcast.createdAtMs || Date.now();
   const id = broadcast.id || `sys_broadcast_${nowMs}_${Math.random().toString(36).substring(2, 7)}`;
   const notifData: AppNotification = {
@@ -835,7 +835,9 @@ export async function sendSystemBroadcastToFirestore(broadcast: {
   } catch (e) {
     console.error('Error sending system broadcast to Firestore:', e);
     systemHealthManager.reportFirestoreDegraded('ส่งประกาศไปยัง Firestore ไม่สำเร็จ');
-    systemHealthManager.enqueueAction('SEND_BROADCAST', notifData);
+    if (!isFromOutbox) {
+      systemHealthManager.enqueueAction('SEND_BROADCAST', notifData);
+    }
   }
 
   return notifData;

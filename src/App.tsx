@@ -171,6 +171,35 @@ function getInitialUser(): SessionUser | null {
   return null;
 }
 
+export function deduplicateNotifications(notifs: AppNotification[]): AppNotification[] {
+  if (!Array.isArray(notifs)) return [];
+  const map = new Map<string, AppNotification>();
+  const seenSignatures = new Set<string>();
+
+  for (const n of notifs) {
+    if (!n || !n.id) continue;
+    // Clean out repetitive auto-generated health status notifications
+    if (n.type === 'system' && (
+      n.title === 'โหมดสำรองฉุกเฉินทำงาน' || 
+      n.title === 'ระบบกลับสู่สภาวะปกติสมบูรณ์' || 
+      n.title === 'โหมดออฟไลน์ทำงาน' ||
+      (typeof n.title === 'string' && (n.title.includes('สำรองฉุกเฉิน') || n.title.includes('กลับสู่สภาวะปกติ')))
+    )) {
+      continue;
+    }
+
+    const signature = `${n.type || ''}:::${n.title || ''}:::${n.description || ''}`;
+    if (!map.has(n.id) && !seenSignatures.has(signature)) {
+      map.set(n.id, n);
+      seenSignatures.add(signature);
+    }
+  }
+
+  const result = Array.from(map.values());
+  result.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+  return result;
+}
+
 export default function App() {
   // Keep track of live-subscribed Firestore items for self-healing comparison
   const lastFirestorePostsRef = useRef<Post[]>([]);
@@ -319,21 +348,7 @@ export default function App() {
     // 3. Subscribe to Cloud Firestore System Broadcast Notifications
     const unsubscribeSystemNotifs = subscribeToSystemNotifications((systemNotifs) => {
       if (systemNotifs && Array.isArray(systemNotifs) && systemNotifs.length > 0) {
-        setNotifications(prev => {
-          const map = new Map<string, AppNotification>();
-          // Priority to system broadcast from Firestore
-          systemNotifs.forEach(n => {
-            if (n && n.id) map.set(n.id, n);
-          });
-          // Preserve local notifications
-          prev.forEach(n => {
-            if (n && n.id && !map.has(n.id)) {
-              map.set(n.id, n);
-            }
-          });
-          const merged = Array.from(map.values()).sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
-          return merged;
-        });
+        setNotifications(prev => deduplicateNotifications([...systemNotifs, ...prev]));
       }
     });
 
@@ -354,7 +369,7 @@ export default function App() {
         const saved = localStorage.getItem('mtfeed_notifications');
         if (saved) {
           try {
-            setNotifications(JSON.parse(saved));
+            setNotifications(deduplicateNotifications(JSON.parse(saved)));
           } catch (err) {}
         }
       }
@@ -416,7 +431,7 @@ export default function App() {
     });
 
     const unsubNotif = systemHealthManager.onNotification((sysNotif) => {
-      setNotifications(prev => [sysNotif, ...prev]);
+      setNotifications(prev => deduplicateNotifications([sysNotif, ...prev]));
     });
 
     return () => {
@@ -780,13 +795,13 @@ export default function App() {
             if (typeof n.title === 'string' && (n.title.includes('พี่หมอแล็บใจดี') || n.title.includes('Chem Specialist'))) return false;
             return true;
           });
-          return cleaned;
+          return deduplicateNotifications(cleaned);
         }
       }
     } catch (e) {
       console.error(e);
     }
-    return getInitialNotifications(getInitialUser());
+    return deduplicateNotifications(getInitialNotifications(getInitialUser()));
   });
 
   // Save notifications to localStorage and broadcast (guarded against loop storms)
@@ -1063,7 +1078,7 @@ export default function App() {
     senderType: 'admin' | 'system';
   }) => {
     const newNotif = await sendSystemBroadcastToFirestore(broadcast);
-    setNotifications(prev => [newNotif, ...prev.filter(n => n.id !== newNotif.id)]);
+    setNotifications(prev => deduplicateNotifications([newNotif, ...prev]));
   };
 
   // Trigger @mention notification
