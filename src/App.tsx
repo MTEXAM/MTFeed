@@ -185,7 +185,27 @@ export default function App() {
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
   const [isSystemHealthModalOpen, setIsSystemHealthModalOpen] = useState(false);
   const [healthState, setHealthState] = useState<SystemHealthState>(() => systemHealthManager.getState());
+  // Interaction Cooldown state
+  const lastInteractionRef = useRef<number>(0);
   const [systemToasts, setSystemToasts] = useState<ToastItem[]>([]);
+
+  const isRapidFire = () => {
+    const now = Date.now();
+    if (now - lastInteractionRef.current < 1000) {
+      setSystemToasts(prev => [...prev, {
+        id: `toast_${now}`,
+        type: 'warning',
+        message: 'ระบบกำลังประมวลผล',
+        submessage: 'กรุณารอสักครู่...'
+      }]);
+      setTimeout(() => {
+        setSystemToasts(prev => prev.filter(t => t.id !== `toast_${now}`));
+      }, 3000);
+      return true;
+    }
+    lastInteractionRef.current = now;
+    return false;
+  };
   const [viewingProfileUser, setViewingProfileUser] = useState<SessionUser | User | null>(null);
   const [pendingExternalUrl, setPendingExternalUrl] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -1098,6 +1118,7 @@ export default function App() {
   };
 
   const handleInteraction = (postId: string, type: 'reply' | 'repost' | 'like' | 'bookmark') => {
+    if (isRapidFire()) return;
     if (!user && type !== 'reply') {
       window.open('https://mtexam-passalldiwa.ai.studio/', '_blank');
       return;
@@ -1197,6 +1218,7 @@ export default function App() {
   };
 
   const handleVote = (postId: string, optionId: string) => {
+    if (isRapidFire()) return;
     if (!user) {
       window.open('https://mtexam-passalldiwa.ai.studio/', '_blank');
       return;
@@ -1230,6 +1252,7 @@ export default function App() {
   };
 
   const handleComment = (postId: string, content: string) => {
+    if (isRapidFire()) return;
     if (!user) {
       window.open('https://mtexam-passalldiwa.ai.studio/', '_blank');
       return;

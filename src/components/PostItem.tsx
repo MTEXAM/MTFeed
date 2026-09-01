@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, Repeat2, Heart, Bookmark, Share, Send, MoreHorizontal, Trash2, Flag, ExternalLink } from 'lucide-react';
 import { Post } from '../types';
-import { getBadgeStyle } from '../utils/auth';
+import { isAdmin, getBadgeStyle } from '../utils/auth';
 import { formatRelativeOrRealTime, formatFullDateTime } from '../utils/timeUtils';
 
 export function PostItem({ 
@@ -50,7 +50,7 @@ export function PostItem({
   const votedOptionId = post.userInteractions?.votedOptionId;
 
   const currentUser = user as any;
-  const isPostAdmin = post?.author?.isAdmin || post?.author?.badge === '👑 Admin';
+  const isPostAdmin = isAdmin(post?.author);
   const authorName = isPostAdmin ? '👑 Admin' : (post?.author?.name || post?.author?.username || 'ผู้ใช้งาน');
   const authorUsername = isPostAdmin ? '👑Admin' : (post?.author?.username || '');
   const authorAvatar = post?.author?.avatar || (isPostAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(authorUsername || 'user')}&backgroundColor=cccccc`);
@@ -201,7 +201,7 @@ export function PostItem({
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
                 {(() => {
-                  const isAdminPost = post.author?.isAdmin || post.author?.badge === '👑 Admin';
+                  const isAdminPost = isAdmin(post.author);
                   if (isAdminPost) {
                     const style = getBadgeStyle('👑 Admin');
                     return (
@@ -409,7 +409,7 @@ export function PostItem({
               {Array.isArray(post.comments) && post.comments.length > 0 && (
                 <div className="space-y-4 mb-4">
                   {post.comments.map((comment) => {
-                    const isCAdmin = comment?.author?.isAdmin || comment?.author?.badge === '👑 Admin';
+                    const isCAdmin = isAdmin(comment?.author);
                     const cAuthorName = isCAdmin ? '👑 Admin' : (comment?.author?.name || comment?.author?.username || 'ผู้ใช้งาน');
                     const cAuthorUsername = isCAdmin ? '👑Admin' : (comment?.author?.username || '');
                     const cAuthorAvatar = comment?.author?.avatar || (isCAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cAuthorUsername || 'user')}&backgroundColor=cccccc`);
@@ -428,7 +428,7 @@ export function PostItem({
                         <div className="min-w-0 flex-1 bg-gray-50 rounded-2xl px-4 py-2">
                           <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                             {(() => {
-                              const isAdminComment = comment.author?.isAdmin || comment.author?.badge === '👑 Admin';
+                              const isAdminComment = isAdmin(comment.author);
                               if (isAdminComment) {
                                 const style = getBadgeStyle('👑 Admin');
                                 return (

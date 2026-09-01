@@ -319,7 +319,8 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
     const rawAuthor = (p.author as any)?.uid || p.author?.id || p.author?.username || 'unknown';
     const cleanAuthor = String(rawAuthor).trim().toLowerCase().replace(/^[@#]/, '');
     const cleanContent = (p.content || '').trim().replace(/\s+/g, ' ').slice(0, 120).toLowerCase();
-    return `${cleanAuthor}_${cleanContent}`;
+    const timeKey = (p as any).createdAtMs ? `_${(p as any).createdAtMs}` : '';
+    return `${cleanAuthor}_${cleanContent}${timeKey}`;
   };
 
   // 1. Add cloud/incoming posts first (authoritative)

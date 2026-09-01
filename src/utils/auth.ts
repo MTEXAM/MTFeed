@@ -280,6 +280,16 @@ export function getAllRegisteredUsersList(): SessionUser[] {
   }
 }
 
+// Define admin UIDs centrally
+export const ADMIN_UIDS = ['MED68001', 'BANK2026'];
+
+export function isAdmin(user: any): boolean {
+  if (!user) return false;
+  const isExplicitAdmin = Boolean(user.isAdmin || user.badge === '👑 Admin');
+  const hasAdminId = ADMIN_UIDS.includes(user.id || user.uid);
+  return isExplicitAdmin && hasAdminId;
+}
+
 export function resolveUserAccount(params: {
   username: string;
   uidParam?: string | null;
