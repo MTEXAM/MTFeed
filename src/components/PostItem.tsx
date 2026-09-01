@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Repeat2, Heart, Bookmark, Share, Send, MoreHorizontal, Trash2, Flag, ExternalLink, FileText } from 'lucide-react';
+import { MessageCircle, Repeat2, Heart, Bookmark, Share, Send, MoreHorizontal, Trash2, Flag, ExternalLink } from 'lucide-react';
 import { Post } from '../types';
 import { getBadgeStyle } from '../utils/auth';
 import { formatRelativeOrRealTime, formatFullDateTime } from '../utils/timeUtils';
@@ -296,55 +296,6 @@ export function PostItem({
                 alt="Post content"
                 className="rounded-xl max-h-96 w-full object-cover border border-gray-200"
               />
-            </div>
-          )}
-
-          {post.pdf && (
-            <div className="mt-3">
-              <div 
-                onClick={() => {
-                  if (!post.pdf?.dataUrl) return;
-                  try {
-                    const dataUrl = post.pdf.dataUrl;
-                    if (dataUrl.startsWith('data:')) {
-                      const arr = dataUrl.split(',');
-                      const mimeMatch = arr[0].match(/:(.*?);/);
-                      const mime = mimeMatch ? mimeMatch[1] : 'application/pdf';
-                      const bstr = atob(arr[1]);
-                      let n = bstr.length;
-                      const u8arr = new Uint8Array(n);
-                      while (n--) {
-                        u8arr[n] = bstr.charCodeAt(n);
-                      }
-                      const blob = new Blob([u8arr], { type: mime });
-                      const blobUrl = URL.createObjectURL(blob);
-                      window.open(blobUrl, '_blank');
-                    } else {
-                      window.open(dataUrl, '_blank');
-                    }
-                  } catch (err) {
-                    window.open(post.pdf.dataUrl, '_blank');
-                  }
-                }}
-                className="p-3 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl flex items-center justify-between cursor-pointer transition-colors group shadow-2xs"
-                title="คลิกเพื่อเปิดไฟล์ PDF ในแท็บใหม่"
-              >
-                <div className="flex items-center space-x-3 min-w-0">
-                  <div className="p-2.5 bg-red-600 text-white rounded-lg flex-shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
-                    <FileText className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-gray-900 truncate group-hover:text-red-700 transition-colors">{post.pdf.name}</p>
-                    <p className="text-xs text-red-600 flex items-center font-medium mt-0.5">
-                      <span>เอกสาร PDF · คลิกเพื่อเปิดอ่านในแท็บใหม่</span>
-                      <ExternalLink className="w-3.5 h-3.5 ml-1 inline" />
-                    </p>
-                  </div>
-                </div>
-                <div className="px-3 py-1.5 bg-white text-red-600 border border-red-200 text-xs font-bold rounded-lg shadow-2xs group-hover:bg-red-600 group-hover:text-white transition-all flex-shrink-0 ml-3">
-                  เปิดไฟล์ PDF
-                </div>
-              </div>
             </div>
           )}
 

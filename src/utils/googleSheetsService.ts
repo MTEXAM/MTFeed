@@ -72,20 +72,13 @@ export async function syncPostToGoogleSheets(post: Post): Promise<boolean> {
     return true;
   }
 
-  const mediaDesc = [
-    post.image ? '[แนบรูปภาพ]' : '',
-    post.pdf ? `[แนบไฟล์ PDF: ${post.pdf.name}]` : ''
-  ].filter(Boolean).join(' ');
-
-  const contentWithMedia = mediaDesc ? `${post.content}\n${mediaDesc}` : post.content;
+  const contentWithImage = post.image ? `${post.content}\n${post.image}` : post.content;
 
   const payload = {
     action: 'createPost',
     uid: (post.author as any)?.uid || post.author?.id || '#MED68001',
-    content: contentWithMedia,
-    image: post.image || '',
-    pdfName: post.pdf?.name || '',
-    pdfData: post.pdf?.dataUrl || ''
+    content: contentWithImage,
+    image: post.image || ''
   };
 
   try {
@@ -271,28 +264,12 @@ function mapSheetFeedToPosts(sheetRows: any[]): Post[] {
 
     let contentStr = typeof row.content === 'string' ? row.content : (row.content ? String(row.content) : '');
     let extractedImage = row.image || undefined;
-    let extractedPdf = (row.pdfName || row.pdfData) ? {
-      name: row.pdfName || 'Document.pdf',
-      dataUrl: row.pdfData || ''
-    } : undefined;
-
-    // Clean up text tags
-    contentStr = contentStr.replace(/\[แนบรูปภาพ\]/g, '').replace(/\[แนบไฟล์ PDF:[^\]]+\]/g, '').trim();
-
-    if (!extractedPdf && contentStr.includes('[แนบไฟล์ PDF:')) {
-      const matchPdf = contentStr.match(/\[แนบไฟล์ PDF:\s*([^\]]+)\]/);
-      if (matchPdf) {
-        extractedPdf = {
-          name: matchPdf[1],
-          dataUrl: row.pdfData || row.image || ''
-        };
-      }
-    }
-
+    
     if (!extractedImage) {
       const imageMatch = contentStr.match(/(https?:\/\/[^\s]+(?:jpg|jpeg|png|gif|webp|unsplash\.com)[^\s]*)/i);
       if (imageMatch) {
         extractedImage = imageMatch[0];
+        // Clean up the URL from the end of the text if we added it there
         contentStr = contentStr.replace(extractedImage, '').trim();
       }
     }
@@ -312,7 +289,6 @@ function mapSheetFeedToPosts(sheetRows: any[]): Post[] {
       },
       content: contentStr,
       image: extractedImage,
-      pdf: extractedPdf,
       tags: typeof contentStr === 'string' ? (contentStr.match(/#[\w\u0E00-\u0E7F]+/g) || []) : [],
       createdAt: dateFormatted,
       createdAtMs: rawTime,

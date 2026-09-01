@@ -312,12 +312,22 @@ export function markPostAsDeletedLocally(postId: string) {
 export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): Post[] {
   const deletedIds = getDeletedPostIds();
   const map = new Map<string, Post>();
+  const contentMap = new Map<string, string>(); // Maps contentKey -> authoritative post ID
+
+  // Helper to generate a standardized unique key for a post's content and author
+  const getContentKey = (p: Post) => {
+    const rawAuthor = (p.author as any)?.uid || p.author?.id || p.author?.username || 'unknown';
+    const cleanAuthor = String(rawAuthor).trim().toLowerCase().replace(/^[@#]/, '');
+    const cleanContent = (p.content || '').trim().replace(/\s+/g, ' ').slice(0, 120).toLowerCase();
+    return `${cleanAuthor}_${cleanContent}`;
+  };
 
   // 1. Add cloud/incoming posts first (authoritative)
   if (Array.isArray(incomingPosts)) {
     incomingPosts.forEach(p => {
       if (p && p.id && !deletedIds.has(p.id)) {
         map.set(p.id, p);
+        contentMap.set(getContentKey(p), p.id);
       }
     });
   }
@@ -326,11 +336,16 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
   if (Array.isArray(existingPosts)) {
     existingPosts.forEach(p => {
       if (p && p.id && !deletedIds.has(p.id)) {
-        const targetId = p.id;
+        const cKey = getContentKey(p);
+        
+        // Check if this post is a duplicate of a cloud post but under a different ID
+        const isDuplicateWithDifferentId = contentMap.has(cKey) && contentMap.get(cKey) !== p.id;
+        const targetId = isDuplicateWithDifferentId ? contentMap.get(cKey)! : p.id;
 
         if (!map.has(targetId)) {
-          // Keep local post so user content and attachments are preserved
+          // Keep local post so user content is preserved
           map.set(targetId, p);
+          contentMap.set(cKey, targetId);
         } else {
           // Merge comments and interactions cleanly
           const cloudPost = map.get(targetId)!;
@@ -364,20 +379,8 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
             ? mergedRepostedBy.length 
             : (cloudPost.stats?.reposts || 0);
 
-          const bestImage = (p.image && p.image.length > 10) 
-            ? p.image 
-            : ((cloudPost.image && cloudPost.image.length > 10) ? cloudPost.image : '');
-
-          const bestPdf = (p.pdf && p.pdf.dataUrl && p.pdf.dataUrl.length > 10)
-            ? p.pdf
-            : ((cloudPost.pdf && cloudPost.pdf.dataUrl && cloudPost.pdf.dataUrl.length > 10)
-                ? cloudPost.pdf
-                : (p.pdf?.name ? p.pdf : cloudPost.pdf));
-
           map.set(targetId, {
             ...cloudPost,
-            image: bestImage,
-            pdf: bestPdf,
             comments: mergedComments,
             likedBy: mergedLikedBy,
             bookmarkedBy: mergedBookmarkedBy,

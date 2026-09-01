@@ -66,10 +66,6 @@ export interface Post {
   author: User;
   content: string;
   image?: string;
-  pdf?: {
-    name: string;
-    dataUrl: string;
-  };
   poll?: {
     options: PollOption[];
     expiresAt: string;
