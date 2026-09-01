@@ -319,7 +319,8 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
     const rawAuthor = (p.author as any)?.uid || p.author?.id || p.author?.username || 'unknown';
     const cleanAuthor = String(rawAuthor).trim().toLowerCase().replace(/^[@#]/, '');
     const cleanContent = (p.content || '').trim().replace(/\s+/g, ' ').slice(0, 120).toLowerCase();
-    const timeKey = (p as any).createdAtMs ? `_${(p as any).createdAtMs}` : '';
+    // Round time to nearest 5 seconds to match posts from different sources with slight time drift
+    const timeKey = (p as any).createdAtMs ? `_${Math.round((p as any).createdAtMs / 5000) * 5000}` : '';
     return `${cleanAuthor}_${cleanContent}${timeKey}`;
   };
 

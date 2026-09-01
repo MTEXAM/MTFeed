@@ -429,7 +429,8 @@ export function Feed({
   };
 
   const getFilteredPosts = () => {
-    let result = (posts || []).filter(Boolean);
+    // Deduplicate by ID immediately
+    let result = Array.from(new Map((posts || []).filter(Boolean).map(p => [p.id, p])).values());
 
     // Filter by selected tag/trend
     if (selectedTag) {
