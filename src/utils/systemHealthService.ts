@@ -254,15 +254,27 @@ class SystemHealthManager {
   }
 
   private updateOverallStatus() {
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    const isOnline = typeof navigator === 'undefined' || navigator.onLine;
+
+    if (!isOnline) {
       this.state.overallStatus = 'offline_mode';
-    } else if (this.state.firestore === 'degraded' || this.state.firestore === 'offline') {
-      this.state.overallStatus = 'fallback_active';
-    } else if (this.state.googleSheets === 'error' && this.state.sqliteBackup === 'offline') {
-      this.state.overallStatus = 'fallback_active';
     } else {
-      this.state.overallStatus = 'healthy';
+      // Auto-heal Firestore status if we had a successful sync in the last 2 minutes
+      const firestoreRecentlySynced = (Date.now() - this.state.lastSuccessfulFirestoreSync) < 120000;
+      if (firestoreRecentlySynced && (this.state.firestore === 'degraded' || this.state.firestore === 'offline')) {
+        this.state.firestore = 'online';
+        this.state.activeFallbackMessage = undefined;
+      }
+
+      if (this.state.firestore === 'degraded' || this.state.firestore === 'offline') {
+        this.state.overallStatus = 'fallback_active';
+      } else if (this.state.googleSheets === 'error' && this.state.sqliteBackup === 'offline') {
+        this.state.overallStatus = 'fallback_active';
+      } else {
+        this.state.overallStatus = 'healthy';
+      }
     }
+
     this.state.lastChecked = Date.now();
     this.notify();
   }
