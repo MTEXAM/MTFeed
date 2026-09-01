@@ -381,6 +381,8 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
 
           map.set(targetId, {
             ...cloudPost,
+            image: (p.image && p.image.length > 10) ? p.image : (cloudPost.image || ''),
+            pdf: (p.pdf && p.pdf.dataUrl) ? p.pdf : (cloudPost.pdf || undefined),
             comments: mergedComments,
             likedBy: mergedLikedBy,
             bookmarkedBy: mergedBookmarkedBy,
