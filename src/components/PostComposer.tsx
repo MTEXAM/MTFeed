@@ -293,6 +293,23 @@ export function PostComposer({
                 </button>
                 <button 
                   type="button" 
+                  onClick={() => {
+                    if (fileInputRef.current) {
+                      fileInputRef.current.accept = 'application/pdf';
+                      fileInputRef.current.click();
+                      setTimeout(() => {
+                        if (fileInputRef.current) fileInputRef.current.accept = 'image/*,application/pdf';
+                      }, 500);
+                    }
+                  }} 
+                  className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors shadow-2xs" 
+                  title="แนบไฟล์เอกสาร PDF"
+                >
+                  <FileText className="h-4 w-4 text-red-600" />
+                  <span className="hidden sm:inline">แนบ PDF</span>
+                </button>
+                <button 
+                  type="button" 
                   onClick={() => setShowPoll(!showPoll)} 
                   className="inline-flex items-center p-2 rounded-full text-red-600 hover:bg-red-50 transition-colors" 
                   title="สร้างโพล"
