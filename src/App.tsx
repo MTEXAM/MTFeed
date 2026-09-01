@@ -13,11 +13,14 @@ import { EditProfileModal } from './components/EditProfileModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { PostItem } from './components/PostItem';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { SystemHealthModal } from './components/SystemHealthModal';
+import { SystemToastContainer, ToastItem } from './components/SystemToast';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post, User } from './types';
 import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid, formatUserBadge, DEFAULT_ACTIVE_USERS } from './utils/auth';
-import { subscribeToPosts, subscribeToUsers, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore, syncPostsToFirestore, getUserFromFirestore, getBackupPostsFromSQLite, getBackupUsersFromSQLite, restoreBackupsToFirestore } from './utils/firestoreService';
+import { subscribeToPosts, subscribeToUsers, subscribeToSystemNotifications, sendSystemBroadcastToFirestore, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore, syncPostsToFirestore, getUserFromFirestore, getBackupPostsFromSQLite, getBackupUsersFromSQLite, restoreBackupsToFirestore } from './utils/firestoreService';
 import { fetchFeedFromGoogleSheets, fetchProfileFromGoogleSheets, syncProfileToGoogleSheets, syncPostToGoogleSheets, extractProfilesFromSheetPosts } from './utils/googleSheetsService';
+import { systemHealthManager, SystemHealthState } from './utils/systemHealthService';
 import { formatRealTime } from './utils/timeUtils';
 import { INITIAL_POSTS } from './data';
 
@@ -180,6 +183,9 @@ export default function App() {
   const [isAdminBoardOpen, setIsAdminBoardOpen] = useState(false);
   const [isOnlineModalOpen, setIsOnlineModalOpen] = useState(false);
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
+  const [isSystemHealthModalOpen, setIsSystemHealthModalOpen] = useState(false);
+  const [healthState, setHealthState] = useState<SystemHealthState>(() => systemHealthManager.getState());
+  const [systemToasts, setSystemToasts] = useState<ToastItem[]>([]);
   const [viewingProfileUser, setViewingProfileUser] = useState<SessionUser | User | null>(null);
   const [pendingExternalUrl, setPendingExternalUrl] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -290,6 +296,27 @@ export default function App() {
       }
     });
 
+    // 3. Subscribe to Cloud Firestore System Broadcast Notifications
+    const unsubscribeSystemNotifs = subscribeToSystemNotifications((systemNotifs) => {
+      if (systemNotifs && Array.isArray(systemNotifs) && systemNotifs.length > 0) {
+        setNotifications(prev => {
+          const map = new Map<string, AppNotification>();
+          // Priority to system broadcast from Firestore
+          systemNotifs.forEach(n => {
+            if (n && n.id) map.set(n.id, n);
+          });
+          // Preserve local notifications
+          prev.forEach(n => {
+            if (n && n.id && !map.has(n.id)) {
+              map.set(n.id, n);
+            }
+          });
+          const merged = Array.from(map.values()).sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+          return merged;
+        });
+      }
+    });
+
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'mtfeed_accounts_registry') {
         setRegisteredUsers(getAllRegisteredUsersList());
@@ -346,12 +373,56 @@ export default function App() {
     return () => {
       unsubscribeUsers();
       unsubscribePosts();
+      unsubscribeSystemNotifs();
       window.removeEventListener('storage', handleStorageChange);
       if (mtFeedChannel && channelListener) {
         mtFeedChannel.removeEventListener('message', channelListener);
       }
     };
   }, []);
+
+  // System Health Monitoring & Failover Alert Subscription
+  useEffect(() => {
+    const unsubHealth = systemHealthManager.subscribe((state) => {
+      setHealthState(state);
+    });
+
+    const unsubToast = systemHealthManager.onToast((toast) => {
+      setSystemToasts(prev => [...prev.slice(-2), toast]);
+      // Auto dismiss toast after 7 seconds
+      setTimeout(() => {
+        setSystemToasts(prev => prev.filter(t => t.id !== toast.id));
+      }, 7000);
+    });
+
+    const unsubNotif = systemHealthManager.onNotification((sysNotif) => {
+      setNotifications(prev => [sysNotif, ...prev]);
+    });
+
+    return () => {
+      unsubHealth();
+      unsubToast();
+      unsubNotif();
+    };
+  }, []);
+
+  // Force Full System Self-Healing & Health Check
+  const handleForceSyncAll = async () => {
+    try {
+      console.log('[SELF-HEALING] Running full multi-tier synchronization...');
+      await performSheetsSync(true);
+      await systemHealthManager.runHealthCheck();
+      await systemHealthManager.drainOutbox();
+      
+      // Also sync latest local posts to firestore if needed
+      if (posts.length > 0) {
+        await syncPostsToFirestore(posts);
+      }
+      systemHealthManager.reportFirestoreSuccess();
+    } catch (e) {
+      console.warn('[SELF-HEALING WARNING]', e);
+    }
+  };
 
   // Global Posts State
   const [posts, setPosts] = useState<Post[]>(() => {
@@ -480,13 +551,13 @@ export default function App() {
     }
   };
 
-  // Google Sheets Auto-Sync: Periodic background polling (every 8s) & Instant refresh on Tab focus
+  // Google Sheets Auto-Sync: Periodic background polling (every 30s) & Instant refresh on Tab focus
   useEffect(() => {
     performSheetsSync(false);
 
     const intervalId = setInterval(() => {
       performSheetsSync(false);
-    }, 8000);
+    }, 30000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -605,6 +676,29 @@ export default function App() {
         console.warn('Could not load user backups from SQLite:', err);
       }
 
+      // C. Load from Tier 2: Local SQLite Notifications Backup
+      try {
+        const res = await fetch('/api/backup/notifications');
+        if (res.ok) {
+          const sqliteNotifs = await res.json();
+          if (Array.isArray(sqliteNotifs) && sqliteNotifs.length > 0) {
+            console.log(`[SQLITE RESTORE] Found ${sqliteNotifs.length} notifications in SQLite backup.`);
+            setNotifications(prev => {
+              const map = new Map<string, AppNotification>();
+              sqliteNotifs.forEach((n: AppNotification) => {
+                if (n && n.id) map.set(n.id, n);
+              });
+              prev.forEach(n => {
+                if (n && n.id && !map.has(n.id)) map.set(n.id, n);
+              });
+              return Array.from(map.values()).sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Could not load notifications from SQLite backup:', err);
+      }
+
       // Self-Healing Comparison: Check if any items in Google Sheets/SQLite backups are missing in Firestore,
       // and trigger Throttled Back-Sync to Firestore
       setTimeout(() => {
@@ -631,14 +725,21 @@ export default function App() {
     loadMultiTierBackups();
   }, []);
 
-  // Save posts to localStorage for offline cache
+  const lastSavedPostsJsonRef = useRef<string>('');
+  const lastSavedNotifsJsonRef = useRef<string>('');
+
+  // Save posts to localStorage for offline cache (guarded against loop storms)
   useEffect(() => {
     try {
       const deletedIds = getDeletedPostIds();
       const validPosts = (posts || []).filter(p => p && p.id && !deletedIds.has(p.id));
-      localStorage.setItem('mtfeed_posts', JSON.stringify(validPosts));
-      if (mtFeedChannel) {
-        mtFeedChannel.postMessage({ type: 'POSTS_UPDATED' });
+      const json = JSON.stringify(validPosts);
+      if (json !== lastSavedPostsJsonRef.current) {
+        lastSavedPostsJsonRef.current = json;
+        localStorage.setItem('mtfeed_posts', json);
+        if (mtFeedChannel) {
+          mtFeedChannel.postMessage({ type: 'POSTS_UPDATED' });
+        }
       }
     } catch (e) {
       console.error(e);
@@ -650,7 +751,17 @@ export default function App() {
     try {
       const saved = localStorage.getItem('mtfeed_notifications');
       if (saved) {
-        return JSON.parse(saved);
+        const parsed: AppNotification[] = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          // Filter out legacy dummy/mock notifications so users only see real actions & real system welcomes
+          const cleaned = parsed.filter(n => {
+            if (!n) return false;
+            if (n.id === 'notif_2' || n.id === 'notif_3') return false;
+            if (typeof n.title === 'string' && (n.title.includes('พี่หมอแล็บใจดี') || n.title.includes('Chem Specialist'))) return false;
+            return true;
+          });
+          return cleaned;
+        }
       }
     } catch (e) {
       console.error(e);
@@ -658,12 +769,16 @@ export default function App() {
     return getInitialNotifications(getInitialUser());
   });
 
-  // Save notifications to localStorage and broadcast
+  // Save notifications to localStorage and broadcast (guarded against loop storms)
   useEffect(() => {
     try {
-      localStorage.setItem('mtfeed_notifications', JSON.stringify(notifications));
-      if (mtFeedChannel) {
-        mtFeedChannel.postMessage({ type: 'NOTIFICATIONS_UPDATED' });
+      const json = JSON.stringify(notifications);
+      if (json !== lastSavedNotifsJsonRef.current) {
+        lastSavedNotifsJsonRef.current = json;
+        localStorage.setItem('mtfeed_notifications', json);
+        if (mtFeedChannel) {
+          mtFeedChannel.postMessage({ type: 'NOTIFICATIONS_UPDATED' });
+        }
       }
     } catch (e) {
       console.error(e);
@@ -914,6 +1029,17 @@ export default function App() {
     setRegisteredUsers(updatedUsers);
   };
 
+  // Admin Broadcast "System & Security" Function
+  const handleSendAdminBroadcast = async (broadcast: {
+    title: string;
+    description: string;
+    severity: 'info' | 'warning' | 'alert' | 'success';
+    senderType: 'admin' | 'system';
+  }) => {
+    const newNotif = await sendSystemBroadcastToFirestore(broadcast);
+    setNotifications(prev => [newNotif, ...prev.filter(n => n.id !== newNotif.id)]);
+  };
+
   // Trigger @mention notification
   const handleMentionNotification = (mentionData: {
     recipientUsername: string;
@@ -994,6 +1120,29 @@ export default function App() {
         } else {
           newLikedBy.push(user.uid);
           newInteractions.liked = true;
+
+          // Dispatch real notification to post author if it's someone else
+          if (targetPost.author && targetPost.author.username) {
+            const authorUName = targetPost.author.username.replace(/^@/, '').toLowerCase();
+            const currentUName = (user.username || '').replace(/^@/, '').toLowerCase();
+            if (authorUName && currentUName && authorUName !== currentUName) {
+              const nowMs = Date.now();
+              const likeNotif: AppNotification = {
+                id: `like_${nowMs}_${Math.random().toString(36).substring(2, 7)}`,
+                type: 'like',
+                title: `${user.name || user.username} ถูกใจโพสต์ของคุณ`,
+                description: `มีเพื่อนๆ สนใจโพสต์: "${targetPost.content.slice(0, 50)}${targetPost.content.length > 50 ? '...' : ''}"`,
+                authorName: user.name || user.username,
+                authorAvatar: user.avatar,
+                targetPostId: targetPost.id,
+                recipientUsername: authorUName,
+                createdAt: formatRealTime(nowMs),
+                createdAtMs: nowMs,
+                read: false
+              };
+              setNotifications(prev => [likeNotif, ...prev]);
+            }
+          }
         }
         newStats.likes = newLikedBy.length;
       } else if (type === 'repost') {
@@ -1122,6 +1271,28 @@ export default function App() {
 
       setPosts(prev => prev.map(p => p.id === postId ? updatedPost : p));
       savePostToFirestore(updatedPost);
+
+      // Dispatch real notification to post author if it's someone else
+      if (targetPost.author && targetPost.author.username) {
+        const authorUName = targetPost.author.username.replace(/^@/, '').toLowerCase();
+        const currentUName = (user.username || '').replace(/^@/, '').toLowerCase();
+        if (authorUName && currentUName && authorUName !== currentUName) {
+          const commentNotif: AppNotification = {
+            id: `comment_${nowMs}_${Math.random().toString(36).substring(2, 7)}`,
+            type: 'comment',
+            title: `${user.name || user.username} แสดงความคิดเห็นในโพสต์ของคุณ`,
+            description: `"${content.slice(0, 60)}${content.length > 60 ? '...' : ''}"`,
+            authorName: user.name || user.username,
+            authorAvatar: user.avatar,
+            targetPostId: targetPost.id,
+            recipientUsername: authorUName,
+            createdAt: formatRealTime(nowMs),
+            createdAtMs: nowMs,
+            read: false
+          };
+          setNotifications(prev => [commentNotif, ...prev]);
+        }
+      }
     }
   };
 
@@ -1233,6 +1404,8 @@ export default function App() {
         onExternalLinkClick={handleOpenExternalUrl}
         isSyncingSheets={isSyncingSheets}
         onRefreshSheets={() => performSheetsSync(true)}
+        healthState={healthState}
+        onOpenSystemHealth={() => setIsSystemHealthModalOpen(true)}
       />
       
       {sharedPostId ? (
@@ -1517,9 +1690,24 @@ export default function App() {
           if (notif.targetTag) {
             setSelectedTag(notif.targetTag);
             setIsNotificationsModalOpen(false);
+          } else if (notif.targetPostId) {
+            setSelectedTag('ทั้งหมด');
+            setIsNotificationsModalOpen(false);
+            setTimeout(() => {
+              const el = document.getElementById(notif.targetPostId!);
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.classList.add('ring-2', 'ring-red-400');
+                setTimeout(() => el.classList.remove('ring-2', 'ring-red-400'), 2500);
+              }
+            }, 200);
           }
         }}
         user={user}
+        onOpenAdminBroadcast={() => {
+          setIsNotificationsModalOpen(false);
+          setIsAdminBoardOpen(true);
+        }}
       />
 
       <AdminBoardModal 
@@ -1529,7 +1717,13 @@ export default function App() {
         onDeletePost={handleDeletePost}
         registeredUsers={registeredUsers}
         onDeleteUser={handleDeleteUser}
+        onClearAllUsers={handleClearAllUsers}
         currentUser={user}
+        onSendBroadcast={handleSendAdminBroadcast}
+        onOpenSystemHealth={() => {
+          setIsAdminBoardOpen(false);
+          setIsSystemHealthModalOpen(true);
+        }}
       />
 
       {user?.needsAdminVerification && (
@@ -1544,6 +1738,27 @@ export default function App() {
             setUser(null);
             window.location.search = '';
           }}
+        />
+      )}
+
+      {/* System Health & Multi-tier Failover Monitor Modal (Admin Only) */}
+      {user?.isAdmin && (
+        <SystemHealthModal
+          isOpen={isSystemHealthModalOpen}
+          onClose={() => setIsSystemHealthModalOpen(false)}
+          healthState={healthState}
+          onForceSyncAll={handleForceSyncAll}
+        />
+      )}
+
+      {/* Real-time System Resilience Toast Container (Admin Only) */}
+      {user?.isAdmin && (
+        <SystemToastContainer
+          toasts={systemToasts}
+          onDismiss={(id) => {
+            setSystemToasts(prev => prev.filter(t => t.id !== id));
+          }}
+          onOpenSystemHealth={() => setIsSystemHealthModalOpen(true)}
         />
       )}
     </div>

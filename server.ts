@@ -95,6 +95,17 @@ async function startServer() {
     );
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS backup_notifications (
+      id TEXT PRIMARY KEY,
+      type TEXT,
+      title TEXT,
+      description TEXT,
+      notif_json TEXT,
+      created_at_ms INTEGER
+    );
+  `);
+
   console.log('[SQLITE] Database tables created or verified successfully!');
 
   // Middleware
@@ -117,6 +128,11 @@ async function startServer() {
 
   const deleteUserStmt = db.prepare(`
     DELETE FROM backup_users WHERE uid = ?
+  `);
+
+  const insertNotificationStmt = db.prepare(`
+    INSERT OR REPLACE INTO backup_notifications (id, type, title, description, notif_json, created_at_ms)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
 
   // --- API BACKUP ROUTES ---
@@ -281,11 +297,56 @@ async function startServer() {
     }
   });
 
+  // Backup or update notifications (System & Security Broadcasts)
+  app.post('/api/backup/notifications', (req, res) => {
+    try {
+      const notifications = req.body;
+      if (!Array.isArray(notifications)) {
+        res.status(400).json({ error: 'Payload must be an array of notifications' });
+        return;
+      }
+
+      sqliteQueue.add(() => {
+        let count = 0;
+        for (const notif of notifications) {
+          if (!notif.id) continue;
+          const type = notif.type || 'system';
+          const title = notif.title || '';
+          const description = notif.description || '';
+          const createdAtMs = notif.createdAtMs || Date.now();
+          const notifJson = JSON.stringify(notif);
+
+          insertNotificationStmt.run(notif.id, type, title, description, notifJson, createdAtMs);
+          count++;
+        }
+        console.log(`[SQLITE QUEUE] Async backed up ${count} notifications.`);
+      });
+
+      res.json({ success: true, queued: true, message: 'Notifications backup synced successfully' });
+    } catch (error: any) {
+      console.error('[SQLITE BACKUP NOTIFICATIONS ERROR]', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get all SQLite backed-up notifications
+  app.get('/api/backup/notifications', (req, res) => {
+    try {
+      const rows = db.prepare('SELECT notif_json FROM backup_notifications ORDER BY created_at_ms DESC').all() as any[];
+      const notifs = rows.map(row => JSON.parse(row.notif_json));
+      res.json(notifs);
+    } catch (error: any) {
+      console.error('[SQLITE GET NOTIFICATIONS ERROR]', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Clear all backups (Admin only or system reset fallback)
   app.post('/api/backup/clear', (req, res) => {
     try {
       db.exec('DELETE FROM backup_posts');
       db.exec('DELETE FROM backup_users');
+      db.exec('DELETE FROM backup_notifications');
       res.json({ success: true, message: 'All SQLite backups cleared successfully' });
     } catch (error: any) {
       console.error('[SQLITE CLEAR ERROR]', error);

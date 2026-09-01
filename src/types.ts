@@ -38,10 +38,13 @@ export interface AppNotification {
   authorAvatar?: string;
   targetPostId?: string;
   targetTag?: string;
-  recipientUsername?: string; // target recipient username
+  recipientUsername?: string; // target recipient username or empty for global broadcast
   createdAt: string;
   createdAtMs?: number;
   read: boolean;
+  senderType?: 'admin' | 'system' | 'user';
+  severity?: 'info' | 'warning' | 'alert' | 'success';
+  isBroadcast?: boolean;
 }
 
 export interface Comment {

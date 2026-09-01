@@ -1,4 +1,5 @@
 import { SessionUser, Post } from '../types';
+import { systemHealthManager } from './systemHealthService';
 
 export const GOOGLE_SHEETS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbz1ZrKFZIHSnhlc6BQd_WvmOdHGa8ENQ6CuIu-MbPdWtgAtVj4WuzUgF6xtbtmFuPoBmQ/exec';
 
@@ -211,6 +212,7 @@ export async function fetchFeedFromGoogleSheets(): Promise<Post[]> {
     if (res.ok) {
       const json = await res.json();
       if (json.status === 'success' && Array.isArray(json.data)) {
+        systemHealthManager.reportSheetsSuccess();
         return mapSheetFeedToPosts(json.data);
       }
     }
@@ -226,11 +228,13 @@ export async function fetchFeedFromGoogleSheets(): Promise<Post[]> {
     if (res.ok) {
       const json = await res.json();
       if (json.status === 'success' && Array.isArray(json.data)) {
+        systemHealthManager.reportSheetsSuccess();
         return mapSheetFeedToPosts(json.data);
       }
     }
   } catch (e) {
     console.error('[SHEETS FETCH ERROR] Failed to fetch feed from Google Sheets:', e);
+    systemHealthManager.reportSheetsError();
   }
 
   return [];
@@ -335,7 +339,7 @@ export function extractProfilesFromSheetPosts(sheetPosts: Post[]): SessionUser[]
 /**
  * Fetch profile from Google Sheets (supports both server proxy and direct fallback, handles # prefix)
  */
-export async function fetchProfileFromGoogleSheets(uid: string): Promise<SessionUser | null> {
+export async function fetchProfileFromGoogleSheets(uid: string): Promise<Partial<SessionUser> | null> {
   if (!uid) return null;
   const timestamp = Date.now();
   const candidates = [uid];
@@ -346,6 +350,7 @@ export async function fetchProfileFromGoogleSheets(uid: string): Promise<Session
   }
 
   for (const candidateUid of candidates) {
+    const isAdmin = candidateUid.replace(/^#/, '').toUpperCase() === 'MED68001';
     try {
       const res = await fetch(`/api/sheets/profile/${encodeURIComponent(candidateUid)}?_t=${timestamp}`, {
         cache: 'no-store',
@@ -354,18 +359,18 @@ export async function fetchProfileFromGoogleSheets(uid: string): Promise<Session
       if (res.ok) {
         const json = await res.json();
         if (json.status === 'success' && json.data && json.data.displayName) {
-          return {
+          const profile: Partial<SessionUser> = {
             id: json.data.uid || candidateUid,
             uid: json.data.uid || candidateUid,
             username: (json.data.username || 'user').replace(/^@/, ''),
             name: json.data.displayName || json.data.username || 'User',
-            avatar: json.data.profileImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(json.data.username || 'user')}`,
-            isAdmin: false,
-            userGroup: '',
-            academicYear: '',
-            faculty: '',
-            updatedAt: Date.now()
+            avatar: json.data.profileImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(json.data.username || 'user')}`
           };
+          if (isAdmin) {
+            profile.isAdmin = true;
+            profile.badge = '👑 Admin';
+          }
+          return profile;
         }
       }
     } catch (e) {
@@ -380,18 +385,18 @@ export async function fetchProfileFromGoogleSheets(uid: string): Promise<Session
       if (resDirect.ok) {
         const json = await resDirect.json();
         if (json.status === 'success' && json.data && json.data.displayName) {
-          return {
+          const profile: Partial<SessionUser> = {
             id: json.data.uid || candidateUid,
             uid: json.data.uid || candidateUid,
             username: (json.data.username || 'user').replace(/^@/, ''),
             name: json.data.displayName || json.data.username || 'User',
-            avatar: json.data.profileImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(json.data.username || 'user')}`,
-            isAdmin: false,
-            userGroup: '',
-            academicYear: '',
-            faculty: '',
-            updatedAt: Date.now()
+            avatar: json.data.profileImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(json.data.username || 'user')}`
           };
+          if (isAdmin) {
+            profile.isAdmin = true;
+            profile.badge = '👑 Admin';
+          }
+          return profile;
         }
       }
     } catch (errDirect) {

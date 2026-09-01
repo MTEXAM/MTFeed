@@ -12,10 +12,12 @@ import {
   writeBatch 
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Post, SessionUser, Comment } from '../types';
+import { Post, SessionUser, Comment, AppNotification } from '../types';
 import { INITIAL_POSTS } from '../data';
 import { DEFAULT_ACTIVE_USERS } from './auth';
 import { syncProfileToGoogleSheets, syncPostToGoogleSheets, syncDeletePostToGoogleSheets } from './googleSheetsService';
+import { systemHealthManager } from './systemHealthService';
+import { formatRealTime } from './timeUtils';
 
 const USERS_COLLECTION = 'users';
 const POSTS_COLLECTION = 'posts';
@@ -93,12 +95,15 @@ export function subscribeToUsers(onUsersUpdate: (users: SessionUser[]) => void) 
           usersList.push(data);
         }
       });
+      systemHealthManager.reportFirestoreSuccess();
       onUsersUpdate(usersList);
     }, (error) => {
       console.error('Firestore users subscription error:', error);
+      systemHealthManager.reportFirestoreDegraded('การเชื่อมต่อ Users Firestore ขัดข้อง');
     });
   } catch (e) {
     console.error('Failed to subscribe to users:', e);
+    systemHealthManager.reportFirestoreDegraded('ไม่สามารถเริ่มต้น Users Subscription');
     return () => {};
   }
 }
@@ -123,14 +128,21 @@ export async function saveUserToFirestore(user: SessionUser): Promise<void> {
     });
 
     // 1. Google Sheets Tier 1 Master Permanent Backup (Instant Fire)
-    syncProfileToGoogleSheets(userData).catch(err => console.warn('Google Sheets user sync failed:', err));
+    syncProfileToGoogleSheets(userData)
+      .then(() => systemHealthManager.reportSheetsSuccess())
+      .catch(err => {
+        console.warn('Google Sheets user sync failed:', err);
+        systemHealthManager.reportSheetsError();
+      });
 
     // 2. SQLite Layer 2 Backup: Save User profile to local SQLite
     fetch('/api/backup/user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...userData, updatedAt: Date.now() })
-    }).catch(err => console.warn('SQLite user backup sync failed:', err));
+    })
+      .then(() => systemHealthManager.reportBackupSuccess())
+      .catch(err => console.warn('SQLite user backup sync failed:', err));
 
     // 3. Firestore Realtime Sync
     const userRef = doc(db, USERS_COLLECTION, docId);
@@ -139,15 +151,19 @@ export async function saveUserToFirestore(user: SessionUser): Promise<void> {
     const docSnap = await getDoc(userRef);
     if (docSnap.exists()) {
       const backupRef = doc(db, 'profile_backups', docId, 'snapshots', Date.now().toString());
-      await setDoc(backupRef, docSnap.data());
+      await setDoc(backupRef, docSnap.data()).catch(() => {});
     }
 
     await setDoc(userRef, {
       ...userData,
       updatedAt: Date.now()
     }, { merge: true });
+
+    systemHealthManager.reportFirestoreSuccess();
   } catch (e) {
-    console.error('Error saving user to Firestore:', e);
+    console.error('Error saving user to Firestore (enqueued for auto-retry):', e);
+    systemHealthManager.reportFirestoreDegraded('เกิดปัญหาในการบันทึก User ไปยัง Firestore');
+    systemHealthManager.enqueueAction('SAVE_USER', user);
   }
 }
 
@@ -298,12 +314,12 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
   const map = new Map<string, Post>();
   const contentMap = new Map<string, string>(); // Maps contentKey -> authoritative post ID
 
-  // Helper to generate a unique key for a post's content and author
+  // Helper to generate a standardized unique key for a post's content and author
   const getContentKey = (p: Post) => {
-    const authorUid = (p.author as any)?.uid || p.author?.id || 'unknown';
-    const contentHash = (p.content || '').trim().substring(0, 150).toLowerCase(); // Check first 150 chars
-    // Group by author and content, ignoring minor time differences (e.g., within 1 minute)
-    return `${authorUid}_${contentHash}`;
+    const rawAuthor = (p.author as any)?.uid || p.author?.id || p.author?.username || 'unknown';
+    const cleanAuthor = String(rawAuthor).trim().toLowerCase().replace(/^[@#]/, '');
+    const cleanContent = (p.content || '').trim().replace(/\s+/g, ' ').slice(0, 120).toLowerCase();
+    return `${cleanAuthor}_${cleanContent}`;
   };
 
   // 1. Add cloud/incoming posts first (authoritative)
@@ -324,17 +340,14 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
         
         // Check if this post is a duplicate of a cloud post but under a different ID
         const isDuplicateWithDifferentId = contentMap.has(cKey) && contentMap.get(cKey) !== p.id;
-        // If it's a duplicate, we treat the cloud ID as the authoritative one
         const targetId = isDuplicateWithDifferentId ? contentMap.get(cKey)! : p.id;
 
         if (!map.has(targetId)) {
-          // Keep local post so user content is NEVER lost
+          // Keep local post so user content is preserved
           map.set(targetId, p);
           contentMap.set(cKey, targetId);
-          // Sync missing post to Firestore in background
-          savePostToFirestore(p).catch(() => {});
         } else {
-          // Merge local comments and interactions if newer
+          // Merge comments and interactions cleanly
           const cloudPost = map.get(targetId)!;
           const mergedCommentsMap = new Map<string, Comment>();
           (cloudPost.comments || []).forEach(c => c && c.id && mergedCommentsMap.set(c.id, c));
@@ -342,7 +355,7 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
           const mergedComments = Array.from(mergedCommentsMap.values());
           mergedComments.sort((a, b) => ((a as any).createdAtMs || 0) - ((b as any).createdAtMs || 0));
 
-          // Merge active interaction lists (taking the set union of users who interacted)
+          // Merge active interaction lists
           const mergedLikedBy = Array.from(new Set([
             ...(cloudPost.likedBy || []),
             ...(p.likedBy || [])
@@ -356,8 +369,6 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
             ...(p.repostedBy || [])
           ]));
 
-          // If a user unlikes, the ID is removed from likedBy, so we want the array length to be authoritative.
-          // If the arrays are empty (e.g. for legacy posts without likedBy field), we fall back to cloudPost stats.
           const finalLikes = (cloudPost.likedBy && cloudPost.likedBy.length > 0) || (p.likedBy && p.likedBy.length > 0)
             ? mergedLikedBy.length 
             : (cloudPost.stats?.likes || 0);
@@ -394,6 +405,33 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
     const timeB = (b as any).createdAtMs || 0;
     return timeB - timeA;
   });
+
+  // Fast Equality Check: If result is identical to existingPosts, return existingPosts to avoid React re-render flicker
+  if (Array.isArray(existingPosts) && existingPosts.length === result.length) {
+    let isIdentical = true;
+    for (let i = 0; i < result.length; i++) {
+      const r = result[i];
+      const e = existingPosts[i];
+      if (
+        !e ||
+        r.id !== e.id ||
+        r.content !== e.content ||
+        r.stats?.likes !== e.stats?.likes ||
+        r.stats?.replies !== e.stats?.replies ||
+        r.stats?.reposts !== e.stats?.reposts ||
+        r.stats?.bookmarks !== e.stats?.bookmarks ||
+        (r.comments?.length || 0) !== (e.comments?.length || 0) ||
+        r.isReported !== e.isReported
+      ) {
+        isIdentical = false;
+        break;
+      }
+    }
+    if (isIdentical) {
+      return existingPosts;
+    }
+  }
+
   return result;
 }
 
@@ -475,12 +513,15 @@ export function subscribeToPosts(onPostsUpdate: (posts: Post[]) => void) {
         return timeB - timeA;
       });
 
+      systemHealthManager.reportFirestoreSuccess();
       onPostsUpdate(postsList);
     }, (error) => {
       console.error('Firestore posts subscription error:', error);
+      systemHealthManager.reportFirestoreDegraded('การเชื่อมต่อ Posts Firestore ขัดข้อง');
     });
   } catch (e) {
     console.error('Failed to subscribe to posts:', e);
+    systemHealthManager.reportFirestoreDegraded('ไม่สามารถเริ่มต้น Posts Subscription');
     return () => {};
   }
 }
@@ -512,6 +553,7 @@ async function seedInitialPosts() {
     } else {
       await setDoc(metaRef, { seeded: true, updatedAt: Date.now() }, { merge: true });
     }
+    systemHealthManager.reportFirestoreSuccess();
   } catch (e) {
     console.error('Failed to seed initial posts:', e);
   }
@@ -533,15 +575,20 @@ export async function savePostToFirestore(post: Post): Promise<void> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify([fullPostWithTime])
-  }).catch(err => console.warn('SQLite post backup sync failed:', err));
+  })
+    .then(() => systemHealthManager.reportBackupSuccess())
+    .catch(err => console.warn('SQLite post backup sync failed:', err));
 
   // 2. Firestore Realtime Sync
   try {
     const postData = sanitizeForFirestore(fullPostWithTime);
     const postRef = doc(db, POSTS_COLLECTION, post.id);
     await setDoc(postRef, postData, { merge: true });
+    systemHealthManager.reportFirestoreSuccess();
   } catch (e) {
-    console.warn('Error saving post to Firestore (using local fallback):', e);
+    console.warn('Error saving post to Firestore (enqueued for auto-retry):', e);
+    systemHealthManager.reportFirestoreDegraded('เกิดปัญหาในการบันทึก Post ไปยัง Firestore');
+    systemHealthManager.enqueueAction('SAVE_POST', fullPostWithTime);
   }
 }
 
@@ -574,10 +621,15 @@ export async function syncPostsToFirestore(posts: Post[]): Promise<void> {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(backupList)
-      }).catch(err => console.warn('SQLite bulk posts backup sync failed:', err));
+      })
+        .then(() => systemHealthManager.reportBackupSuccess())
+        .catch(err => console.warn('SQLite bulk posts backup sync failed:', err));
     }
+    systemHealthManager.reportFirestoreSuccess();
   } catch (e) {
     console.error('Error syncing posts to Firestore:', e);
+    systemHealthManager.reportFirestoreDegraded('เกิดปัญหาในการซิงก์ Posts ไปยัง Firestore');
+    systemHealthManager.enqueueAction('SYNC_POSTS', posts);
   }
 }
 
@@ -587,7 +639,12 @@ export async function deletePostFromFirestore(postId: string, content?: string, 
   markPostAsDeletedLocally(postId);
 
   // 1. Google Sheets Layer 1 Permanent: Delete post in Google Sheet
-  syncDeletePostToGoogleSheets(postId, content, uid).catch(err => console.warn('Google Sheets delete sync failed:', err));
+  syncDeletePostToGoogleSheets(postId, content, uid)
+    .then(() => systemHealthManager.reportSheetsSuccess())
+    .catch(err => {
+      console.warn('Google Sheets delete sync failed:', err);
+      systemHealthManager.reportSheetsError();
+    });
 
   try {
     // 2. Delete document from posts collection
@@ -596,6 +653,7 @@ export async function deletePostFromFirestore(postId: string, content?: string, 
 
     // SQLite Layer 2 Backup: Delete post from local SQLite
     fetch(`/api/backup/posts/${postId}`, { method: 'DELETE' })
+      .then(() => systemHealthManager.reportBackupSuccess())
       .catch(err => console.warn('SQLite post delete sync failed:', err));
 
     // 3. Persist deleted post ID in system_config/deleted_posts
@@ -605,8 +663,11 @@ export async function deletePostFromFirestore(postId: string, content?: string, 
     const combinedIds = Array.from(new Set([...existingCloudIds, ...Array.from(getDeletedPostIds()), postId]));
 
     await setDoc(deletedDocRef, { ids: combinedIds, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+    systemHealthManager.reportFirestoreSuccess();
   } catch (e) {
-    console.warn('Error deleting post from Firestore (local removal preserved):', e);
+    console.error('Error deleting post from Firestore:', e);
+    systemHealthManager.reportFirestoreDegraded('เกิดปัญหาในการลบ Post บน Firestore');
+    systemHealthManager.enqueueAction('DELETE_POST', { postId, content, uid });
   }
 }
 
@@ -652,7 +713,7 @@ export async function restoreBackupsToFirestore(postsToSync: Post[], usersToSync
       chunk.forEach(u => {
         const uid = u.uid || u.username || u.id;
         if (uid) {
-          const userRef = doc(db, 'registered_users', uid);
+          const userRef = doc(db, USERS_COLLECTION, uid);
           batch.set(userRef, u, { merge: true });
         }
       });
@@ -698,3 +759,85 @@ export async function restoreBackupsToFirestore(postsToSync: Post[], usersToSync
 
   console.log('[SELF-HEALING] Throttled backup restoration finished successfully!');
 }
+
+// -------------------------------------------------------------
+// System Broadcasts & Notifications Subscriptions
+// -------------------------------------------------------------
+const NOTIFICATIONS_COLLECTION = 'notifications';
+
+export async function sendSystemBroadcastToFirestore(broadcast: {
+  id?: string;
+  title: string;
+  description: string;
+  severity?: 'info' | 'warning' | 'alert' | 'success';
+  senderType?: 'admin' | 'system';
+  targetTag?: string;
+  createdAt?: string;
+  createdAtMs?: number;
+  read?: boolean;
+  [key: string]: any;
+}): Promise<AppNotification> {
+  const nowMs = broadcast.createdAtMs || Date.now();
+  const id = broadcast.id || `sys_broadcast_${nowMs}_${Math.random().toString(36).substring(2, 7)}`;
+  const notifData: AppNotification = {
+    id,
+    type: 'system',
+    title: broadcast.title,
+    description: broadcast.description,
+    createdAt: broadcast.createdAt || formatRealTime(nowMs),
+    createdAtMs: nowMs,
+    read: false,
+    isBroadcast: true,
+    senderType: broadcast.senderType || 'admin',
+    severity: broadcast.severity || 'info',
+    targetTag: broadcast.targetTag
+  };
+
+  // 1. Dual-Write to SQLite Local Server Backup
+  fetch('/api/backup/notifications', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify([notifData])
+  })
+    .then(() => systemHealthManager.reportBackupSuccess())
+    .catch(err => console.warn('SQLite notification backup sync failed:', err));
+
+  // 2. Write to Cloud Firestore
+  try {
+    const notifRef = doc(db, NOTIFICATIONS_COLLECTION, notifData.id);
+    await setDoc(notifRef, notifData, { merge: true });
+    systemHealthManager.reportFirestoreSuccess();
+  } catch (e) {
+    console.error('Error sending system broadcast to Firestore:', e);
+    systemHealthManager.reportFirestoreDegraded('ส่งประกาศไปยัง Firestore ไม่สำเร็จ');
+    systemHealthManager.enqueueAction('SEND_BROADCAST', notifData);
+  }
+
+  return notifData;
+}
+
+export function subscribeToSystemNotifications(onNotificationsUpdate: (notifications: AppNotification[]) => void) {
+  try {
+    const notifsRef = collection(db, NOTIFICATIONS_COLLECTION);
+    return onSnapshot(notifsRef, (snapshot) => {
+      const list: AppNotification[] = [];
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data() as AppNotification;
+        if (data && data.id) {
+          list.push(data);
+        }
+      });
+      // Sort by newest first
+      list.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+      systemHealthManager.reportFirestoreSuccess();
+      onNotificationsUpdate(list);
+    }, (error) => {
+      console.error('Firestore notifications subscription error:', error);
+      systemHealthManager.reportFirestoreDegraded('การเชื่อมต่อ Notifications Firestore ขัดข้อง');
+    });
+  } catch (e) {
+    console.error('Failed to subscribe to notifications:', e);
+    return () => {};
+  }
+}
+

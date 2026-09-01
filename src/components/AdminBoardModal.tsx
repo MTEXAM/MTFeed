@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ShieldAlert, Trash2, Users, AlertTriangle, ShieldCheck, Check } from 'lucide-react';
+import { X, ShieldAlert, Trash2, Users, AlertTriangle, ShieldCheck, Check, Send, Megaphone } from 'lucide-react';
 import { Post, SessionUser } from '../types';
 import { maskUid } from '../utils/auth';
 
@@ -11,7 +11,9 @@ export function AdminBoardModal({
   registeredUsers = [],
   onDeleteUser,
   onClearAllUsers,
-  currentUser
+  currentUser,
+  onSendBroadcast,
+  onOpenSystemHealth
 }: { 
   isOpen: boolean; 
   onClose: () => void;
@@ -21,11 +23,25 @@ export function AdminBoardModal({
   onDeleteUser?: (uidOrUsername: string) => void;
   onClearAllUsers?: () => void;
   currentUser?: SessionUser | null;
+  onSendBroadcast?: (broadcast: { 
+    title: string; 
+    description: string; 
+    severity: 'info' | 'warning' | 'alert' | 'success'; 
+    senderType: 'admin' | 'system';
+  }) => Promise<void>;
+  onOpenSystemHealth?: () => void;
 }) {
-  const [activeTab, setActiveTab] = useState<'reports' | 'users'>('reports');
+  const [activeTab, setActiveTab] = useState<'reports' | 'users' | 'broadcast'>('reports');
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<SessionUser | null>(null);
   const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
+
+  // Broadcast Form State
+  const [broadcastTitle, setBroadcastTitle] = useState('');
+  const [broadcastDesc, setBroadcastDesc] = useState('');
+  const [broadcastSeverity, setBroadcastSeverity] = useState<'info' | 'warning' | 'alert' | 'success'>('info');
+  const [broadcastSender, setBroadcastSender] = useState<'admin' | 'system'>('admin');
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
 
   if (!isOpen) return null;
 
@@ -58,6 +74,39 @@ export function AdminBoardModal({
     }
   };
 
+  const handleSendBroadcast = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!broadcastTitle.trim() || !broadcastDesc.trim()) {
+      alert('กรุณากรอกหัวข้อและเนื้อหาประกาศให้ครบถ้วน');
+      return;
+    }
+
+    if (!currentUser?.isAdmin) {
+      alert('❌ เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่มีสิทธิ์ส่งประกาศ');
+      return;
+    }
+
+    try {
+      setIsBroadcasting(true);
+      if (onSendBroadcast) {
+        await onSendBroadcast({
+          title: broadcastTitle.trim(),
+          description: broadcastDesc.trim(),
+          severity: broadcastSeverity,
+          senderType: broadcastSender
+        });
+      }
+      setActionSuccessMsg('📢 ส่งข้อความแจ้งเตือน "ระบบ & ความปลอดภัย" ไปยังผู้ใช้ทุกคนเรียบร้อยแล้ว!');
+      setBroadcastTitle('');
+      setBroadcastDesc('');
+      setTimeout(() => setActionSuccessMsg(null), 5000);
+    } catch (err: any) {
+      alert('เกิดข้อผิดพลาดในการส่งประกาศ: ' + (err.message || err));
+    } finally {
+      setIsBroadcasting(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden border border-gray-100">
@@ -70,19 +119,31 @@ export function AdminBoardModal({
             </div>
             <div>
               <h2 className="text-lg font-bold">ศูนย์ควบคุมผู้ดูแลระบบ (Admin Board)</h2>
-              <p className="text-xs text-red-100">จัดการโพสต์ที่ไม่เหมาะสมและจัดการสมาชิกในระบบ</p>
+              <p className="text-xs text-red-100">จัดการความปลอดภัย ประกาศเตือน และจัดการสมาชิกในระบบ</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 text-white/80 hover:text-white rounded-full hover:bg-white/20 transition-colors">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-2">
+            {onOpenSystemHealth && (
+              <button 
+                onClick={onOpenSystemHealth} 
+                className="px-2.5 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-colors border border-white/20"
+                title="ดูสถานะความพร้อมของระบบและการสำรองข้อมูลหลายชั้น (Multi-Tier Redundancy & Self-Healing)"
+              >
+                <ShieldCheck className="w-4 h-4 text-emerald-300" />
+                <span className="hidden sm:inline">สถานะระบบ (Multi-Tier)</span>
+              </button>
+            )}
+            <button onClick={onClose} className="p-2 text-white/80 hover:text-white rounded-full hover:bg-white/20 transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-gray-200 bg-gray-50 px-4 pt-2">
+        <div className="flex border-b border-gray-200 bg-gray-50 px-4 pt-2 overflow-x-auto">
           <button
             onClick={() => setActiveTab('reports')}
-            className={`px-4 py-2.5 font-bold text-sm border-b-2 flex items-center space-x-2 transition-all ${
+            className={`px-4 py-2.5 font-bold text-sm border-b-2 flex items-center space-x-2 transition-all whitespace-nowrap ${
               activeTab === 'reports'
                 ? 'border-red-600 text-red-600 bg-white rounded-t-lg'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -93,7 +154,7 @@ export function AdminBoardModal({
           </button>
           <button
             onClick={() => setActiveTab('users')}
-            className={`px-4 py-2.5 font-bold text-sm border-b-2 flex items-center space-x-2 transition-all ${
+            className={`px-4 py-2.5 font-bold text-sm border-b-2 flex items-center space-x-2 transition-all whitespace-nowrap ${
               activeTab === 'users'
                 ? 'border-red-600 text-red-600 bg-white rounded-t-lg'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -102,11 +163,22 @@ export function AdminBoardModal({
             <Users className="w-4 h-4" />
             <span>จัดการสมาชิก ({registeredUsers.length})</span>
           </button>
+          <button
+            onClick={() => setActiveTab('broadcast')}
+            className={`px-4 py-2.5 font-bold text-sm border-b-2 flex items-center space-x-2 transition-all whitespace-nowrap ${
+              activeTab === 'broadcast'
+                ? 'border-red-600 text-red-600 bg-white rounded-t-lg shadow-2xs'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Megaphone className="w-4 h-4 text-red-500" />
+            <span className="text-red-600 font-bold">ส่งประกาศ ระบบ & ความปลอดภัย</span>
+          </button>
         </div>
 
         {/* Action message */}
         {actionSuccessMsg && (
-          <div className="bg-emerald-50 text-emerald-800 text-xs px-4 py-2 flex items-center space-x-1.5 border-b border-emerald-100 font-medium">
+          <div className="bg-emerald-50 text-emerald-800 text-xs px-4 py-2 flex items-center space-x-1.5 border-b border-emerald-100 font-medium animate-in fade-in">
             <Check className="w-4 h-4 text-emerald-600" />
             <span>{actionSuccessMsg}</span>
           </div>
@@ -144,7 +216,7 @@ export function AdminBoardModal({
             </div>
           </div>
         )}
-        
+
         {/* Confirm Clear All Overlay */}
         {showClearAllConfirm && (
           <div className="p-4 bg-red-100 border-b border-red-300 animate-in fade-in">
@@ -157,7 +229,7 @@ export function AdminBoardModal({
                   ⚠️ ยืนยันการล้างบัญชีสมาชิกทั้งหมดในระบบ?
                 </p>
                 <p className="text-xs text-red-800 mt-1">
-                  การดำเนินการนี้จะลบบัญชีผู้ใช้ที่ลงทะเบียนทั้งหมดออกจากฐานข้อมูล Cloud Firestore และเครื่องนี้ ยกเว้นบัญชีแอดมินของคุณ
+                  การดำเนินการนี้จะลบข้อมูลสมาชิกทั้งหมดในระบบและใน Cloud Firestore (จะคงเหลือเฉพาะบัญชีผู้ดูแลระบบปัจจุบัน)
                 </p>
                 <div className="mt-3 flex space-x-2">
                   <button
@@ -179,8 +251,177 @@ export function AdminBoardModal({
         )}
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-4 bg-gray-50/50">
-          {activeTab === 'reports' ? (
+        <div className="p-4 overflow-y-auto flex-1 bg-gray-50/50">
+          {activeTab === 'broadcast' ? (
+            /* Broadcast to System & Security Tab */
+            <div className="bg-white rounded-xl border border-red-100 shadow-xs p-5 space-y-4">
+              <div className="flex items-center space-x-3 pb-3 border-b border-gray-100">
+                <div className="p-2.5 bg-red-50 text-red-600 rounded-xl border border-red-100">
+                  <Megaphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900 text-sm">ส่งข้อความแจ้งเตือนในหมวด "ระบบ & ความปลอดภัย"</h3>
+                  <p className="text-xs text-gray-500">
+                    ข้อความนี้จะถูกส่งแบบเรียลไทม์ไปยังกระดิ่งแจ้งเตือนของผู้ใช้ทุกคน และเข้าหมวด <b>ระบบ & ความปลอดภัย</b> ทันที
+                  </p>
+                </div>
+              </div>
+
+              {/* Quick Template Presets */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  เลือกหัวข้อด่วน (Quick Presets):
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { title: '🔒 แจ้งเตือนความปลอดภัย: บัญชีผู้ใช้และรหัส UID', desc: 'ระบบได้เพิ่มการเข้ารหัสข้อมูลบัญชีและเชื่อมต่อกับรหัสประจำตัว UID ป้องกันการแอบอ้างสิทธิ์', sev: 'info', sender: 'admin' },
+                    { title: '🛠️ ประกาศปรับปรุงและบำรุงรักษาระบบสำรองข้อมูล', desc: 'ระบบกำลังดำเนินการซิงก์ข้อมูลสำรองระหว่าง Google Sheets, SQLite และ Firestore เพื่อความเสถียรสูงสุด', sev: 'warning', sender: 'admin' },
+                    { title: '⚡ แจ้งเตือนระบบสำรองข้อมูลฉุกเฉิน (Zero-Downtime)', desc: 'ระบบทำงานในโหมดสำรองฉุกเฉินอัตโนมัติ ข้อมูลทุกโพสต์ปลอดภัย 100% และยังใช้งานได้ตามปกติ', sev: 'alert', sender: 'system' },
+                    { title: '🟢 ระบบกลับสู่สภาวะปกติสมบูรณ์ 100%', desc: 'การเชื่อมต่อระบบฐานข้อมูล Cloud และ Google Sheets ประสานงานตรงกันเรียบร้อยแล้ว', sev: 'success', sender: 'system' }
+                  ].map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setBroadcastTitle(preset.title);
+                        setBroadcastDesc(preset.desc);
+                        setBroadcastSeverity(preset.sev as any);
+                        setBroadcastSender(preset.sender as any);
+                      }}
+                      className="px-2.5 py-1 text-xs bg-gray-50 hover:bg-red-50 hover:text-red-700 hover:border-red-200 text-gray-700 rounded-lg border border-gray-200 transition-colors"
+                    >
+                      {preset.title.split(':')[0]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <form onSubmit={handleSendBroadcast} className="space-y-4">
+                {/* Title */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    หัวข้อประกาศ (Title) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={broadcastTitle}
+                    onChange={(e) => setBroadcastTitle(e.target.value)}
+                    placeholder="เช่น แจ้งเตือนความปลอดภัย หรือ ประกาศปรับปรุงระบบ"
+                    className="w-full text-xs p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 font-medium"
+                  />
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    เนื้อหาข้อความแจ้งเตือน (Content) <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    required
+                    rows={3}
+                    value={broadcastDesc}
+                    onChange={(e) => setBroadcastDesc(e.target.value)}
+                    placeholder="พิมพ์รายละเอียดประกาศที่จะส่งให้ผู้ใช้ทุกคนทราบ..."
+                    className="w-full text-xs p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 leading-relaxed"
+                  />
+                </div>
+
+                {/* Sender and Severity Grids */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  {/* Sender Selection */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                      ผู้ส่งข้อความ (Sender Identity)
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setBroadcastSender('admin')}
+                        className={`p-2 rounded-xl text-xs font-bold border text-left flex items-center space-x-2 transition-all cursor-pointer ${
+                          broadcastSender === 'admin'
+                            ? 'bg-red-50 border-red-300 text-red-800 shadow-xs'
+                            : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                        }`}
+                      >
+                        <span className="text-sm">👑</span>
+                        <div>
+                          <p className="leading-tight">แอดมิน (Admin)</p>
+                          <p className="text-[10px] text-gray-500 font-normal">#MED68001</p>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setBroadcastSender('system')}
+                        className={`p-2 rounded-xl text-xs font-bold border text-left flex items-center space-x-2 transition-all cursor-pointer ${
+                          broadcastSender === 'system'
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-800 shadow-xs'
+                            : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                        }`}
+                      >
+                        <span className="text-sm">🛡️</span>
+                        <div>
+                          <p className="leading-tight">ระบบอัตโนมัติ AI</p>
+                          <p className="text-[10px] text-gray-500 font-normal">System Sentinel</p>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Severity Level */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                      ระดับความสำคัญ (Severity)
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[
+                        { id: 'info', label: '🔵 ทั่วไป (Info)', color: 'border-blue-200 bg-blue-50 text-blue-800' },
+                        { id: 'warning', label: '🟡 ปลอดภัย (Warn)', color: 'border-amber-200 bg-amber-50 text-amber-800' },
+                        { id: 'alert', label: '🔴 ฉุกเฉิน (Alert)', color: 'border-rose-200 bg-rose-50 text-rose-800' },
+                        { id: 'success', label: '🟢 สำเร็จ (Success)', color: 'border-emerald-200 bg-emerald-50 text-emerald-800' }
+                      ].map((sev) => (
+                        <button
+                          key={sev.id}
+                          type="button"
+                          onClick={() => setBroadcastSeverity(sev.id as any)}
+                          className={`px-2 py-1.5 rounded-lg text-xs font-medium border text-center transition-all cursor-pointer ${
+                            broadcastSeverity === sev.id
+                              ? `${sev.color} font-bold ring-2 ring-red-500/20`
+                              : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                          }`}
+                        >
+                          {sev.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Submit button */}
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={isBroadcasting || !broadcastTitle || !broadcastDesc}
+                    className="w-full py-2.5 px-4 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs flex items-center justify-center space-x-2 shadow-xs transition-all cursor-pointer"
+                  >
+                    {isBroadcasting ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                        <span>กำลังส่งประกาศไปยังทุกคน...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        <span>ส่งประกาศเข้า "ระบบ & ความปลอดภัย" ของสมาชิกทุกคน</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : activeTab === 'reports' ? (
+            /* Reported Posts Tab */
             <div>
               {reportedPosts.length === 0 ? (
                 <div className="text-center py-12 bg-white rounded-xl border border-gray-200 shadow-xs">

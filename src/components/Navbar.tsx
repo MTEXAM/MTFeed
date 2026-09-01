@@ -1,7 +1,8 @@
 import React from 'react';
-import { BookA, MessageSquare, Bell, Search, Settings, User, Shield, Award, Camera, Edit3, LogOut, RefreshCw } from 'lucide-react';
+import { BookA, MessageSquare, Bell, Search, Settings, User, Shield, Award, Camera, Edit3, LogOut, RefreshCw, ShieldCheck, Activity } from 'lucide-react';
 import { SessionUser } from '../types';
 import { getBadgeStyle, formatUserBadge, maskUid } from '../utils/auth';
+import { SystemHealthState } from '../utils/systemHealthService';
 
 export function Navbar({ 
   user, 
@@ -16,7 +17,9 @@ export function Navbar({
   onOpenNotifications,
   onExternalLinkClick,
   onRefreshSheets,
-  isSyncingSheets = false
+  isSyncingSheets = false,
+  healthState,
+  onOpenSystemHealth
 }: { 
   user: SessionUser | null;
   onLoginClick: () => void;
@@ -31,6 +34,8 @@ export function Navbar({
   onExternalLinkClick?: (url: string) => void;
   onRefreshSheets?: () => void;
   isSyncingSheets?: boolean;
+  healthState?: SystemHealthState;
+  onOpenSystemHealth?: () => void;
 }) {
   const handleExamClick = (e: React.MouseEvent) => {
     const url = "https://mtexam-passalldiwa.ai.studio/";
@@ -97,6 +102,32 @@ export function Navbar({
               )}
             </div>
             
+            {/* System Health / Multi-Tier Redundancy Status (Admin Only) */}
+            {user?.isAdmin && onOpenSystemHealth && (
+              <button
+                onClick={onOpenSystemHealth}
+                className="hidden sm:inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-700"
+                title="คลิกเพื่อดูสถานะความพร้อมและระบบสำรองข้อมูลหลายชั้น (Multi-Tier Health) - เฉพาะแอดมิน"
+              >
+                {(!healthState || healthState.overallStatus === 'healthy') ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span className="text-[11px] text-gray-700 font-semibold">ระบบเสถียร 100% (Admin)</span>
+                  </>
+                ) : healthState.overallStatus === 'fallback_active' ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                    <span className="text-[11px] text-amber-800 font-semibold">ระบบสำรองทำงาน (ปลอดภัย)</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                    <span className="text-[11px] text-orange-800 font-semibold">โหมดออฟไลน์</span>
+                  </>
+                )}
+              </button>
+            )}
+
             {/* Live Google Sheets Refresh / Sync Button */}
             {onRefreshSheets && (
               <button

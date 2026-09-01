@@ -397,40 +397,25 @@ export function getInitialNotifications(user: SessionUser | null): AppNotificati
       type: 'system',
       title: `ความปลอดภัย: เชื่อมต่อบัญชีรหัส 8 หลัก (UID: #${uidStr})`,
       description: `ระบบล็อคบัญชีของคุณกับรหัสประจำตัว #${uidStr} ป้องกันชื่อซ้ำและเก็บข้อมูลโพสต์/บุ๊กมาร์กให้อัตโนมัติทุกครั้งที่เข้าใช้งาน`,
+      authorName: 'ระบบความปลอดภัย MTFeed',
+      senderType: 'system',
+      severity: 'info',
       createdAt: 'เมื่อสักครู่',
+      createdAtMs: Date.now(),
       read: false
     },
     {
       id: 'notif_admin_welcome',
-      type: 'badge',
+      type: 'system',
       title: 'ยินดีต้อนรับสู่ MTFeed ชุมชนนักเทคนิคการแพทย์',
       description: `สวัสดีคุณ ${nameStr}! มาร่วมพูดคุย ถาม-ตอบ แลกเปลี่ยนทริคจำและแนวข้อสอบสภาวิชาชีพได้ตลอด 24 ชม.`,
-      authorName: 'Admin Bank',
+      authorName: 'Admin Bank (👑 ผู้ดูแลระบบ)',
       authorAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5',
-      createdAt: '10 นาทีที่แล้ว',
+      senderType: 'admin',
+      severity: 'info',
+      createdAt: 'เมื่อสักครู่',
+      createdAtMs: Date.now() - 60000,
       read: false
-    },
-    {
-      id: 'notif_like_1',
-      type: 'like',
-      title: 'พี่หมอแล็บใจดี และสมาชิกอีก 8 คน ถูกใจโพสต์',
-      description: 'มีเพื่อนๆ ให้ความสนใจและกดถูกใจในประเด็นยอดนิยม "#สอบสภาครั้งที่1"',
-      authorName: 'พี่หมอแล็บใจดี',
-      authorAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=MorLab&backgroundColor=bbf7d0',
-      targetTag: '#สอบสภาครั้งที่1',
-      createdAt: '25 นาทีที่แล้ว',
-      read: false
-    },
-    {
-      id: 'notif_comment_1',
-      type: 'comment',
-      title: 'Chem Specialist แสดงความคิดเห็นใหม่',
-      description: '"สรุปเคมีคลินิกชุดนี้มีประโยชน์มากเลยครับ ขอบคุณที่แชร์นะครับ!"',
-      authorName: 'Chem Specialist',
-      authorAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=ChemGuru&backgroundColor=fed7aa',
-      targetTag: '#เคมีคลินิก',
-      createdAt: '1 ชั่วโมงที่แล้ว',
-      read: true
     }
   ];
 }
