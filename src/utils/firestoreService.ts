@@ -271,8 +271,25 @@ function sanitizeForFirestore(val: any): any {
   return val;
 }
 
-// Local and Cloud tracking of deleted post IDs
+// Local and Cloud tracking of deleted post IDs and content signatures
 const DELETED_POSTS_KEY = 'mtfeed_deleted_post_ids';
+const DELETED_SIGNATURES_KEY = 'mtfeed_deleted_post_signatures';
+
+export function getPostSignature(post: Partial<Post>): string {
+  if (!post) return '';
+  const rawAuthor = (post.author as any)?.uid || post.author?.id || post.author?.username || '';
+  const cleanAuthor = String(rawAuthor).trim().toLowerCase().replace(/^[@#]/, '');
+  
+  let contentStr = String(post.content || '').trim();
+  // Strip image URLs or trailing links if attached
+  contentStr = contentStr.replace(/https?:\/\/[^\s]+/g, '').trim();
+  const cleanContent = contentStr.replace(/\s+/g, ' ').slice(0, 100).toLowerCase();
+
+  // 2-minute time bucket to absorb sync latency differences between sources
+  const timeBucket = (post as any).createdAtMs ? `_${Math.floor(((post as any).createdAtMs || 0) / 120000)}` : '';
+
+  return `${cleanAuthor}:::${cleanContent}${timeBucket}`;
+}
 
 export function getDeletedPostIds(): Set<string> {
   const ids = new Set<string>();
@@ -290,19 +307,55 @@ export function getDeletedPostIds(): Set<string> {
   return ids;
 }
 
-export function markPostAsDeletedLocally(postId: string) {
-  if (!postId) return;
+export function getDeletedPostSignatures(): Set<string> {
+  const sigs = new Set<string>();
+  try {
+    const raw = localStorage.getItem(DELETED_SIGNATURES_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        arr.forEach(sig => {
+          if (sig) sigs.add(String(sig));
+        });
+      }
+    }
+  } catch (e) {}
+  return sigs;
+}
+
+export function markPostAsDeletedLocally(postId: string, content?: string, uid?: string, postObj?: Post) {
+  if (!postId && !postObj && !content) return;
   try {
     const ids = getDeletedPostIds();
-    ids.add(postId);
+    if (postId) ids.add(postId);
     localStorage.setItem(DELETED_POSTS_KEY, JSON.stringify(Array.from(ids)));
+
+    const sigs = getDeletedPostSignatures();
+    if (postObj) {
+      const sig = getPostSignature(postObj);
+      if (sig) sigs.add(sig);
+    }
+    if (content || uid) {
+      const dummyPost: Partial<Post> = {
+        content: content || '',
+        author: { id: uid || '', uid: uid || '', name: '', username: '', avatar: '' } as any
+      };
+      const sig = getPostSignature(dummyPost as Post);
+      if (sig) sigs.add(sig);
+    }
+    localStorage.setItem(DELETED_SIGNATURES_KEY, JSON.stringify(Array.from(sigs)));
     
-    // Also remove from local cached posts
+    // Also remove matching posts from local cached posts
     const localPostsRaw = localStorage.getItem('mtfeed_posts');
     if (localPostsRaw) {
       const parsed = JSON.parse(localPostsRaw);
       if (Array.isArray(parsed)) {
-        const filtered = parsed.filter((p: any) => p && p.id !== postId);
+        const filtered = parsed.filter((p: any) => {
+          if (!p || !p.id) return false;
+          if (postId && p.id === postId) return false;
+          if (sigs.has(getPostSignature(p))) return false;
+          return true;
+        });
         localStorage.setItem('mtfeed_posts', JSON.stringify(filtered));
       }
     }
@@ -311,94 +364,71 @@ export function markPostAsDeletedLocally(postId: string) {
 
 export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): Post[] {
   const deletedIds = getDeletedPostIds();
-  const map = new Map<string, Post>();
-  const contentMap = new Map<string, string>(); // Maps contentKey -> authoritative post ID
+  const deletedSigs = getDeletedPostSignatures();
 
-  // Helper to generate a standardized unique key for a post's content and author
-  const getContentKey = (p: Post) => {
-    const rawAuthor = (p.author as any)?.uid || p.author?.id || p.author?.username || 'unknown';
-    const cleanAuthor = String(rawAuthor).trim().toLowerCase().replace(/^[@#]/, '');
-    const cleanContent = (p.content || '').trim().replace(/\s+/g, ' ').slice(0, 120).toLowerCase();
-    // Round time to nearest 5 seconds to match posts from different sources with slight time drift
-    const timeKey = (p as any).createdAtMs ? `_${Math.round((p as any).createdAtMs / 5000) * 5000}` : '';
-    return `${cleanAuthor}_${cleanContent}${timeKey}`;
+  const map = new Map<string, Post>();
+  const sigToIdMap = new Map<string, string>();
+
+  const mergeTwoPosts = (target: Post, source: Post): Post => {
+    // Keep Firestore or non-sheet ID as authoritative if possible
+    const primary = target.id.startsWith('sheet_') && !source.id.startsWith('sheet_') ? source : target;
+    const secondary = primary === target ? source : target;
+
+    const mergedCommentsMap = new Map<string, Comment>();
+    (primary.comments || []).forEach(c => c && c.id && mergedCommentsMap.set(c.id, c));
+    (secondary.comments || []).forEach(c => c && c.id && mergedCommentsMap.set(c.id, c));
+    const mergedComments = Array.from(mergedCommentsMap.values());
+    mergedComments.sort((a, b) => ((a as any).createdAtMs || 0) - ((b as any).createdAtMs || 0));
+
+    const mergedLikedBy = Array.from(new Set([...(primary.likedBy || []), ...(secondary.likedBy || [])]));
+    const mergedBookmarkedBy = Array.from(new Set([...(primary.bookmarkedBy || []), ...(secondary.bookmarkedBy || [])]));
+    const mergedRepostedBy = Array.from(new Set([...(primary.repostedBy || []), ...(secondary.repostedBy || [])]));
+
+    return {
+      ...primary,
+      comments: mergedComments,
+      likedBy: mergedLikedBy,
+      bookmarkedBy: mergedBookmarkedBy,
+      repostedBy: mergedRepostedBy,
+      stats: {
+        ...primary.stats,
+        likes: Math.max(primary.stats?.likes || 0, secondary.stats?.likes || 0, mergedLikedBy.length),
+        replies: Math.max(primary.stats?.replies || 0, secondary.stats?.replies || 0, mergedComments.length),
+        reposts: Math.max(primary.stats?.reposts || 0, secondary.stats?.reposts || 0, mergedRepostedBy.length),
+        bookmarks: Math.max(primary.stats?.bookmarks || 0, secondary.stats?.bookmarks || 0, mergedBookmarkedBy.length)
+      }
+    };
   };
 
-  // 1. Add cloud/incoming posts first (authoritative)
-  if (Array.isArray(incomingPosts)) {
-    incomingPosts.forEach(p => {
-      if (p && p.id && !deletedIds.has(p.id)) {
-        map.set(p.id, p);
-        contentMap.set(getContentKey(p), p.id);
+  const processPost = (p: Post) => {
+    if (!p || !p.id) return;
+    if (deletedIds.has(p.id)) return;
+
+    const sig = getPostSignature(p);
+    if (sig && deletedSigs.has(sig)) return;
+
+    // Check if post already exists in map by ID or by Signature
+    const existingId = map.has(p.id) 
+      ? p.id 
+      : (sig && sigToIdMap.has(sig) ? sigToIdMap.get(sig) : null);
+
+    if (existingId && map.has(existingId)) {
+      const merged = mergeTwoPosts(map.get(existingId)!, p);
+      map.set(existingId, merged);
+    } else {
+      map.set(p.id, p);
+      if (sig) {
+        sigToIdMap.set(sig, p.id);
       }
-    });
+    }
+  };
+
+  if (Array.isArray(incomingPosts)) {
+    incomingPosts.forEach(processPost);
   }
 
-  // 2. Preserve any existing local posts that are NOT in deleted list
   if (Array.isArray(existingPosts)) {
-    existingPosts.forEach(p => {
-      if (p && p.id && !deletedIds.has(p.id)) {
-        const cKey = getContentKey(p);
-        
-        // Check if this post is a duplicate of a cloud post but under a different ID
-        const isDuplicateWithDifferentId = contentMap.has(cKey) && contentMap.get(cKey) !== p.id;
-        const targetId = isDuplicateWithDifferentId ? contentMap.get(cKey)! : p.id;
-
-        if (!map.has(targetId)) {
-          // Keep local post so user content is preserved
-          map.set(targetId, p);
-          contentMap.set(cKey, targetId);
-        } else {
-          // Merge comments and interactions cleanly
-          const cloudPost = map.get(targetId)!;
-          const mergedCommentsMap = new Map<string, Comment>();
-          (cloudPost.comments || []).forEach(c => c && c.id && mergedCommentsMap.set(c.id, c));
-          (p.comments || []).forEach(c => c && c.id && mergedCommentsMap.set(c.id, c));
-          const mergedComments = Array.from(mergedCommentsMap.values());
-          mergedComments.sort((a, b) => ((a as any).createdAtMs || 0) - ((b as any).createdAtMs || 0));
-
-          // Merge active interaction lists
-          const mergedLikedBy = Array.from(new Set([
-            ...(cloudPost.likedBy || []),
-            ...(p.likedBy || [])
-          ]));
-          const mergedBookmarkedBy = Array.from(new Set([
-            ...(cloudPost.bookmarkedBy || []),
-            ...(p.bookmarkedBy || [])
-          ]));
-          const mergedRepostedBy = Array.from(new Set([
-            ...(cloudPost.repostedBy || []),
-            ...(p.repostedBy || [])
-          ]));
-
-          const finalLikes = (cloudPost.likedBy && cloudPost.likedBy.length > 0) || (p.likedBy && p.likedBy.length > 0)
-            ? mergedLikedBy.length 
-            : (cloudPost.stats?.likes || 0);
-          const finalBookmarks = (cloudPost.bookmarkedBy && cloudPost.bookmarkedBy.length > 0) || (p.bookmarkedBy && p.bookmarkedBy.length > 0)
-            ? mergedBookmarkedBy.length 
-            : (cloudPost.stats?.bookmarks || 0);
-          const finalReposts = (cloudPost.repostedBy && cloudPost.repostedBy.length > 0) || (p.repostedBy && p.repostedBy.length > 0)
-            ? mergedRepostedBy.length 
-            : (cloudPost.stats?.reposts || 0);
-
-          map.set(targetId, {
-            ...cloudPost,
-            comments: mergedComments,
-            likedBy: mergedLikedBy,
-            bookmarkedBy: mergedBookmarkedBy,
-            repostedBy: mergedRepostedBy,
-            votedBy: cloudPost.votedBy || p.votedBy || [],
-            stats: {
-              ...cloudPost.stats,
-              likes: finalLikes,
-              replies: Math.max(cloudPost.stats?.replies || 0, p.stats?.replies || 0, mergedComments.length),
-              reposts: finalReposts,
-              bookmarks: finalBookmarks
-            }
-          });
-        }
-      }
-    });
+    existingPosts.forEach(processPost);
   }
 
   const result = Array.from(map.values());
@@ -407,32 +437,6 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
     const timeB = (b as any).createdAtMs || 0;
     return timeB - timeA;
   });
-
-  // Fast Equality Check: If result is identical to existingPosts, return existingPosts to avoid React re-render flicker
-  if (Array.isArray(existingPosts) && existingPosts.length === result.length) {
-    let isIdentical = true;
-    for (let i = 0; i < result.length; i++) {
-      const r = result[i];
-      const e = existingPosts[i];
-      if (
-        !e ||
-        r.id !== e.id ||
-        r.content !== e.content ||
-        r.stats?.likes !== e.stats?.likes ||
-        r.stats?.replies !== e.stats?.replies ||
-        r.stats?.reposts !== e.stats?.reposts ||
-        r.stats?.bookmarks !== e.stats?.bookmarks ||
-        (r.comments?.length || 0) !== (e.comments?.length || 0) ||
-        r.isReported !== e.isReported
-      ) {
-        isIdentical = false;
-        break;
-      }
-    }
-    if (isIdentical) {
-      return existingPosts;
-    }
-  }
 
   return result;
 }
@@ -460,6 +464,21 @@ export function subscribeToPosts(onPostsUpdate: (posts: Post[]) => void) {
           if (changed) {
             try {
               localStorage.setItem(DELETED_POSTS_KEY, JSON.stringify(Array.from(currentLocal)));
+            } catch (e) {}
+          }
+        }
+        if (data && Array.isArray(data.signatures)) {
+          const currentLocalSigs = getDeletedPostSignatures();
+          let sigChanged = false;
+          data.signatures.forEach((sig: string) => {
+            if (sig && !currentLocalSigs.has(sig)) {
+              currentLocalSigs.add(sig);
+              sigChanged = true;
+            }
+          });
+          if (sigChanged) {
+            try {
+              localStorage.setItem(DELETED_SIGNATURES_KEY, JSON.stringify(Array.from(currentLocalSigs)));
             } catch (e) {}
           }
         }
@@ -495,6 +514,7 @@ export function subscribeToPosts(onPostsUpdate: (posts: Post[]) => void) {
     // 3. Listen to live posts snapshot
     return onSnapshot(postsRef, (snapshot) => {
       const deletedIds = getDeletedPostIds();
+      const deletedSigs = getDeletedPostSignatures();
       if (snapshot.empty) {
         onPostsUpdate([]);
         return;
@@ -504,19 +524,17 @@ export function subscribeToPosts(onPostsUpdate: (posts: Post[]) => void) {
       snapshot.forEach((docSnap) => {
         const data = docSnap.data() as Post;
         if (data && data.id && data.content && !deletedIds.has(data.id)) {
-          postsList.push(data);
+          const sig = getPostSignature(data);
+          if (!sig || !deletedSigs.has(sig)) {
+            postsList.push(data);
+          }
         }
       });
 
-      // Sort posts by newest
-      postsList.sort((a, b) => {
-        const timeA = (a as any).createdAtMs || 0;
-        const timeB = (b as any).createdAtMs || 0;
-        return timeB - timeA;
-      });
+      const deduplicated = mergePostsLists(postsList, []);
 
       systemHealthManager.reportFirestoreSuccess();
-      onPostsUpdate(postsList);
+      onPostsUpdate(deduplicated);
     }, (error) => {
       console.error('Firestore posts subscription error:', error);
       systemHealthManager.reportFirestoreDegraded('การเชื่อมต่อ Posts Firestore ขัดข้อง');
@@ -636,9 +654,9 @@ export async function syncPostsToFirestore(posts: Post[]): Promise<void> {
 }
 
 // Delete post from Firestore permanently
-export async function deletePostFromFirestore(postId: string, content?: string, uid?: string): Promise<void> {
+export async function deletePostFromFirestore(postId: string, content?: string, uid?: string, postObj?: Post): Promise<void> {
   if (!postId) return;
-  markPostAsDeletedLocally(postId);
+  markPostAsDeletedLocally(postId, content, uid, postObj);
 
   // 1. Google Sheets Layer 1 Permanent: Delete post in Google Sheet
   syncDeletePostToGoogleSheets(postId, content, uid)
@@ -658,13 +676,18 @@ export async function deletePostFromFirestore(postId: string, content?: string, 
       .then(() => systemHealthManager.reportBackupSuccess())
       .catch(err => console.warn('SQLite post delete sync failed:', err));
 
-    // 3. Persist deleted post ID in system_config/deleted_posts
+    // 3. Persist deleted post IDs and Signatures in system_config/deleted_posts
     const deletedDocRef = doc(db, 'system_config', 'deleted_posts');
     const snap = await getDoc(deletedDocRef).catch(() => null);
     const existingCloudIds: string[] = snap && snap.exists() ? (snap.data().ids || []) : [];
-    const combinedIds = Array.from(new Set([...existingCloudIds, ...Array.from(getDeletedPostIds()), postId]));
+    const existingCloudSigs: string[] = snap && snap.exists() ? (snap.data().signatures || []) : [];
 
-    await setDoc(deletedDocRef, { ids: combinedIds, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+    const targetSig = postObj ? getPostSignature(postObj) : (content || uid ? getPostSignature({ content, author: { id: uid || '', uid: uid || '', name: '', username: '', avatar: '' } as any }) : '');
+
+    const combinedIds = Array.from(new Set([...existingCloudIds, ...Array.from(getDeletedPostIds()), postId]));
+    const combinedSigs = Array.from(new Set([...existingCloudSigs, ...Array.from(getDeletedPostSignatures()), ...(targetSig ? [targetSig] : [])]));
+
+    await setDoc(deletedDocRef, { ids: combinedIds, signatures: combinedSigs, updatedAt: Date.now() }, { merge: true }).catch(() => {});
     systemHealthManager.reportFirestoreSuccess();
   } catch (e) {
     console.error('Error deleting post from Firestore:', e);

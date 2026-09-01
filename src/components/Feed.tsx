@@ -3,7 +3,7 @@ import { PostComposer } from './PostComposer';
 import { PostItem } from './PostItem';
 import { MOCK_USERS } from '../data';
 import { Post, Comment, SessionUser } from '../types';
-import { deletePostFromFirestore, savePostToFirestore, markPostAsDeletedLocally } from '../utils/firestoreService';
+import { deletePostFromFirestore, savePostToFirestore, markPostAsDeletedLocally, getPostSignature, mergePostsLists } from '../utils/firestoreService';
 import { syncPostToGoogleSheets, syncProfileToGoogleSheets } from '../utils/googleSheetsService';
 import { formatRealTime } from '../utils/timeUtils';
 
@@ -132,18 +132,24 @@ export function Feed({
       }
     }
 
-    markPostAsDeletedLocally(postId);
+    markPostAsDeletedLocally(postId, postToDelete?.content, user?.uid || (postToDelete?.author as any)?.uid, postToDelete);
 
     if (setPosts) {
       setPosts(prev => {
-        const updated = prev.filter(p => p.id !== postId);
+        const targetSig = postToDelete ? getPostSignature(postToDelete) : '';
+        const updated = prev.filter(p => {
+          if (!p || !p.id) return false;
+          if (p.id === postId) return false;
+          if (targetSig && getPostSignature(p) === targetSig) return false;
+          return true;
+        });
         try {
           localStorage.setItem('mtfeed_posts', JSON.stringify(updated));
         } catch (e) {}
         return updated;
       });
     }
-    deletePostFromFirestore(postId, postToDelete?.content, user?.uid || (postToDelete?.author as any)?.uid);
+    deletePostFromFirestore(postId, postToDelete?.content, user?.uid || (postToDelete?.author as any)?.uid, postToDelete);
   };
 
   const handleReportPost = (postId: string) => {
@@ -429,8 +435,8 @@ export function Feed({
   };
 
   const getFilteredPosts = () => {
-    // Deduplicate by ID immediately
-    let result = Array.from(new Map((posts || []).filter(Boolean).map(p => [p.id, p])).values());
+    // Deduplicate and filter deleted posts
+    let result = mergePostsLists(posts || [], []);
 
     // Filter by selected tag/trend
     if (selectedTag) {

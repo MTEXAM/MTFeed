@@ -18,7 +18,7 @@ import { SystemToastContainer, ToastItem } from './components/SystemToast';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post, User } from './types';
 import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid, formatUserBadge, DEFAULT_ACTIVE_USERS } from './utils/auth';
-import { subscribeToPosts, subscribeToUsers, subscribeToSystemNotifications, sendSystemBroadcastToFirestore, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore, syncPostsToFirestore, getUserFromFirestore, getBackupPostsFromSQLite, getBackupUsersFromSQLite, restoreBackupsToFirestore } from './utils/firestoreService';
+import { subscribeToPosts, subscribeToUsers, subscribeToSystemNotifications, sendSystemBroadcastToFirestore, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, getPostSignature, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore, syncPostsToFirestore, getUserFromFirestore, getBackupPostsFromSQLite, getBackupUsersFromSQLite, restoreBackupsToFirestore } from './utils/firestoreService';
 import { fetchFeedFromGoogleSheets, fetchProfileFromGoogleSheets, syncProfileToGoogleSheets, syncPostToGoogleSheets, extractProfilesFromSheetPosts } from './utils/googleSheetsService';
 import { systemHealthManager, SystemHealthState } from './utils/systemHealthService';
 import { formatRealTime } from './utils/timeUtils';
@@ -1006,16 +1006,22 @@ export default function App() {
       }
     }
 
-    markPostAsDeletedLocally(postId);
+    markPostAsDeletedLocally(postId, targetPost?.content, user?.uid || (targetPost?.author as any)?.uid, targetPost);
 
     setPosts(prev => {
-      const filtered = prev.filter(p => p && p.id !== postId);
+      const targetSig = targetPost ? getPostSignature(targetPost) : '';
+      const filtered = prev.filter(p => {
+        if (!p || !p.id) return false;
+        if (p.id === postId) return false;
+        if (targetSig && getPostSignature(p) === targetSig) return false;
+        return true;
+      });
       try {
         localStorage.setItem('mtfeed_posts', JSON.stringify(filtered));
       } catch (e) {}
       return filtered;
     });
-    await deletePostFromFirestore(postId, targetPost?.content, user?.uid || (targetPost?.author as any)?.uid);
+    await deletePostFromFirestore(postId, targetPost?.content, user?.uid || (targetPost?.author as any)?.uid, targetPost);
   };
 
   // Admin Delete User Function
