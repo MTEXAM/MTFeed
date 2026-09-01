@@ -72,13 +72,18 @@ export async function syncPostToGoogleSheets(post: Post): Promise<boolean> {
     return true;
   }
 
-  const contentWithImage = post.image ? `${post.content}\n${post.image}` : post.content;
+  const mediaDesc = [
+    post.image ? '[แนบรูปภาพ]' : '',
+    post.pdf ? `[แนบไฟล์ PDF: ${post.pdf.name}]` : ''
+  ].filter(Boolean).join(' ');
+
+  const contentWithMedia = mediaDesc ? `${post.content}\n${mediaDesc}` : post.content;
 
   const payload = {
     action: 'createPost',
     uid: (post.author as any)?.uid || post.author?.id || '#MED68001',
-    content: contentWithImage,
-    image: post.image || ''
+    content: contentWithMedia,
+    image: post.image && post.image.length < 5000 ? post.image : ''
   };
 
   try {

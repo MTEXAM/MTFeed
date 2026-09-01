@@ -302,7 +302,30 @@ export function PostItem({
           {post.pdf && (
             <div className="mt-3">
               <div 
-                onClick={() => window.open(post.pdf!.dataUrl, '_blank')}
+                onClick={() => {
+                  if (!post.pdf?.dataUrl) return;
+                  try {
+                    const dataUrl = post.pdf.dataUrl;
+                    if (dataUrl.startsWith('data:')) {
+                      const arr = dataUrl.split(',');
+                      const mimeMatch = arr[0].match(/:(.*?);/);
+                      const mime = mimeMatch ? mimeMatch[1] : 'application/pdf';
+                      const bstr = atob(arr[1]);
+                      let n = bstr.length;
+                      const u8arr = new Uint8Array(n);
+                      while (n--) {
+                        u8arr[n] = bstr.charCodeAt(n);
+                      }
+                      const blob = new Blob([u8arr], { type: mime });
+                      const blobUrl = URL.createObjectURL(blob);
+                      window.open(blobUrl, '_blank');
+                    } else {
+                      window.open(dataUrl, '_blank');
+                    }
+                  } catch (err) {
+                    window.open(post.pdf.dataUrl, '_blank');
+                  }
+                }}
                 className="p-3 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl flex items-center justify-between cursor-pointer transition-colors group shadow-2xs"
                 title="คลิกเพื่อเปิดไฟล์ PDF ในแท็บใหม่"
               >
