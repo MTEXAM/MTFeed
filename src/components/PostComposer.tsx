@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Image as ImageIcon, BarChart2, Hash, Ghost, Smile, X, AtSign, Link2 } from 'lucide-react';
+import { Image as ImageIcon, BarChart2, Hash, Ghost, Smile, X, AtSign, Link2, FileText } from 'lucide-react';
 import { PollOption, SessionUser } from '../types';
 import { maskUid } from '../utils/auth';
 
@@ -11,7 +11,7 @@ export function PostComposer({
   registeredUsers = [],
   onLoginClick
 }: { 
-  onPost: (content: string, isAnonymous: boolean, image?: string, poll?: { options: { id: string, text: string, votes: number }[], expiresAt: string, totalVotes: number }) => void;
+  onPost: (content: string, isAnonymous: boolean, image?: string, poll?: { options: { id: string, text: string, votes: number }[], expiresAt: string, totalVotes: number }, pdf?: { name: string; dataUrl: string }) => void;
   user?: SessionUser | null;
   externalSharedText?: string | null;
   onClearExternalSharedText?: () => void;
@@ -21,6 +21,7 @@ export function PostComposer({
   const [content, setContent] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [image, setImage] = useState<string | undefined>();
+  const [pdf, setPdf] = useState<{ name: string; dataUrl: string } | undefined>();
   const [showPoll, setShowPoll] = useState(false);
   const [showMentionMenu, setShowMentionMenu] = useState(false);
   const [showLinkInput, setShowLinkInput] = useState(false);
@@ -57,7 +58,7 @@ export function PostComposer({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedContent = (content || '').trim();
-    if (!trimmedContent && !image) return;
+    if (!trimmedContent && !image && !pdf) return;
     
     let pollData;
     if (showPoll && pollOptions.filter(o => typeof o === 'string' && o.trim()).length >= 2) {
@@ -72,24 +73,67 @@ export function PostComposer({
       };
     }
     
-    onPost(trimmedContent, isAnonymous, image, pollData);
+    onPost(trimmedContent, isAnonymous, image, pollData, pdf);
     setContent('');
     setIsAnonymous(false);
     setImage(undefined);
+    setPdf(undefined);
     setShowPoll(false);
     setShowMentionMenu(false);
     setShowLinkInput(false);
     setPollOptions(['', '']);
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setPdf({
+            name: file.name,
+            dataUrl: reader.result as string
+          });
+          setImage(undefined);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const img = new Image();
+          img.src = reader.result as string;
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            const MAX_DIM = 600;
+            if (width > height && width > MAX_DIM) {
+              height = Math.round((height * MAX_DIM) / width);
+              width = MAX_DIM;
+            } else if (height > MAX_DIM) {
+              width = Math.round((width * MAX_DIM) / height);
+              height = MAX_DIM;
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              const compressedBase64 = canvas.toDataURL('image/jpeg', 0.65);
+              setImage(compressedBase64);
+              setPdf(undefined);
+            } else {
+              setImage(reader.result as string);
+              setPdf(undefined);
+            }
+          };
+          img.onerror = () => {
+            setImage(reader.result as string);
+            setPdf(undefined);
+          };
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -174,6 +218,27 @@ export function PostComposer({
               </div>
             )}
 
+            {pdf && (
+              <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between">
+                <div className="flex items-center space-x-3 min-w-0">
+                  <div className="p-2 bg-red-600 text-white rounded-lg flex-shrink-0">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-gray-900 truncate">{pdf.name}</p>
+                    <p className="text-[11px] text-red-600">เอกสาร PDF พร้อมแนบโพสต์</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPdf(undefined)}
+                  className="p-1 text-gray-400 hover:text-gray-600 rounded-full transition-colors ml-2 flex-shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
             {showPoll && (
               <div className="mt-3 p-4 bg-gray-50 rounded-xl border border-gray-200">
                 <div className="flex justify-between items-center mb-2">
@@ -214,15 +279,15 @@ export function PostComposer({
                 <input 
                   type="file" 
                   ref={fileInputRef} 
-                  onChange={handleImageUpload} 
-                  accept="image/*" 
+                  onChange={handleFileUpload} 
+                  accept="image/*,application/pdf" 
                   className="hidden" 
                 />
                 <button 
                   type="button" 
                   onClick={() => fileInputRef.current?.click()} 
                   className="inline-flex items-center p-2 rounded-full text-red-600 hover:bg-red-50 transition-colors" 
-                  title="แนบรูปภาพ/สไลด์"
+                  title="แนบรูปภาพหรือไฟล์ PDF"
                 >
                   <ImageIcon className="h-5 w-5" />
                 </button>
