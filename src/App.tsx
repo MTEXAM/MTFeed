@@ -174,24 +174,26 @@ function getInitialUser(): SessionUser | null {
 export function deduplicateNotifications(notifs: AppNotification[]): AppNotification[] {
   if (!Array.isArray(notifs)) return [];
   const map = new Map<string, AppNotification>();
-  const seenSignatures = new Set<string>();
+  const seenRecentSignatures = new Set<string>();
 
-  for (const n of notifs) {
+  // Sort input by createdAtMs desc
+  const sortedInput = [...notifs].filter(Boolean).sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+
+  for (const n of sortedInput) {
     if (!n || !n.id) continue;
-    // Clean out repetitive auto-generated health status notifications
-    if (n.type === 'system' && (
-      n.title === 'โหมดสำรองฉุกเฉินทำงาน' || 
-      n.title === 'ระบบกลับสู่สภาวะปกติสมบูรณ์' || 
-      n.title === 'โหมดออฟไลน์ทำงาน' ||
-      (typeof n.title === 'string' && (n.title.includes('สำรองฉุกเฉิน') || n.title.includes('กลับสู่สภาวะปกติ')))
-    )) {
-      continue;
-    }
 
-    const signature = `${n.type || ''}:::${n.title || ''}:::${n.description || ''}`;
-    if (!map.has(n.id) && !seenSignatures.has(signature)) {
+    // 5-second time bucket to absorb rapid duplicate re-transmissions
+    const timeBucket = Math.floor((n.createdAtMs || Date.now()) / 5000);
+    const signature = `${n.type || ''}:::${n.title || ''}:::${n.description || ''}:::${timeBucket}`;
+
+    if (map.has(n.id)) {
+      const existing = map.get(n.id)!;
+      if (existing.read || n.read) {
+        map.set(n.id, { ...existing, read: true });
+      }
+    } else if (!seenRecentSignatures.has(signature)) {
       map.set(n.id, n);
-      seenSignatures.add(signature);
+      seenRecentSignatures.add(signature);
     }
   }
 
