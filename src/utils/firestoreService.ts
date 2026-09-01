@@ -312,22 +312,12 @@ export function markPostAsDeletedLocally(postId: string) {
 export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): Post[] {
   const deletedIds = getDeletedPostIds();
   const map = new Map<string, Post>();
-  const contentMap = new Map<string, string>(); // Maps contentKey -> authoritative post ID
-
-  // Helper to generate a standardized unique key for a post's content and author
-  const getContentKey = (p: Post) => {
-    const rawAuthor = (p.author as any)?.uid || p.author?.id || p.author?.username || 'unknown';
-    const cleanAuthor = String(rawAuthor).trim().toLowerCase().replace(/^[@#]/, '');
-    const cleanContent = (p.content || '').trim().replace(/\s+/g, ' ').slice(0, 120).toLowerCase();
-    return `${cleanAuthor}_${cleanContent}`;
-  };
 
   // 1. Add cloud/incoming posts first (authoritative)
   if (Array.isArray(incomingPosts)) {
     incomingPosts.forEach(p => {
       if (p && p.id && !deletedIds.has(p.id)) {
         map.set(p.id, p);
-        contentMap.set(getContentKey(p), p.id);
       }
     });
   }
@@ -336,16 +326,11 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
   if (Array.isArray(existingPosts)) {
     existingPosts.forEach(p => {
       if (p && p.id && !deletedIds.has(p.id)) {
-        const cKey = getContentKey(p);
-        
-        // Check if this post is a duplicate of a cloud post but under a different ID
-        const isDuplicateWithDifferentId = contentMap.has(cKey) && contentMap.get(cKey) !== p.id;
-        const targetId = isDuplicateWithDifferentId ? contentMap.get(cKey)! : p.id;
+        const targetId = p.id;
 
         if (!map.has(targetId)) {
-          // Keep local post so user content is preserved
+          // Keep local post so user content and attachments are preserved
           map.set(targetId, p);
-          contentMap.set(cKey, targetId);
         } else {
           // Merge comments and interactions cleanly
           const cloudPost = map.get(targetId)!;
