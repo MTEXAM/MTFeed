@@ -1,7 +1,6 @@
 import React from 'react';
 import { PostComposer } from './PostComposer';
 import { PostItem } from './PostItem';
-import { ExamCountdownWidget } from './ExamCountdownWidget';
 import { MOCK_USERS } from '../data';
 import { Post, Comment, SessionUser } from '../types';
 import { deletePostFromFirestore, savePostToFirestore, markPostAsDeletedLocally, getPostSignature, mergePostsLists } from '../utils/firestoreService';
@@ -518,11 +517,6 @@ export function Feed({
             ล้างตัวกรอง ✕
           </button>
         )}
-      </div>
-
-      {/* Mobile-only Exam Countdown & Study Widget */}
-      <div className="block lg:hidden p-3 bg-gray-50 border-b border-gray-100">
-        <ExamCountdownWidget currentUser={user} />
       </div>
 
       <PostComposer 

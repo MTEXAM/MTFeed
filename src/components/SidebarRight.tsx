@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { TrendingUp, Users, ChevronDown, ChevronUp, Sparkles, Hash, ShieldCheck, Database, CheckCircle2, Cloud } from 'lucide-react';
 import { Post, SessionUser } from '../types';
-import { ExamCountdownWidget } from './ExamCountdownWidget';
 
 export function SidebarRight({
   posts = [],
@@ -61,9 +60,6 @@ export function SidebarRight({
   return (
     <div className="hidden lg:block w-80 flex-shrink-0 py-6 pl-6">
       <div className="sticky top-24 space-y-6">
-        
-        {/* Exam Countdown & Study Goals Tracker Widget */}
-        <ExamCountdownWidget currentUser={currentUser} />
 
         {/* Trends Box */}
         <div className="bg-gray-50 rounded-2xl p-5 border border-gray-100 shadow-xs">
