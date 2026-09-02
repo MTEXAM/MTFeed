@@ -875,26 +875,32 @@ export function subscribeToSystemNotifications(onNotificationsUpdate: (notificat
 const EXAM_COUNTDOWN_DOC_ID = 'exam_countdown';
 
 export async function saveExamCountdownConfig(config: ExamCountdownConfig): Promise<void> {
+  const payload: ExamCountdownConfig = {
+    title: config.title || 'นับถอยหลังวันเวลาสอบสภาเทคนิคการแพทย์',
+    organizer: config.organizer || 'เพจเล่าเรื่องจากห้องแล็บ',
+    targetDateTime: config.targetDateTime || null,
+    endDateTime: config.endDateTime || null,
+    note: config.note || '',
+    calendarEventId: config.calendarEventId ?? null,
+    calendarHtmlLink: config.calendarHtmlLink ?? null,
+    updatedBy: config.updatedBy || 'แอดมิน',
+    updatedAt: Date.now()
+  };
+
+  // Instant local persistence
+  try {
+    localStorage.setItem('mt_feed_exam_countdown_config', JSON.stringify(payload));
+  } catch {}
+
   try {
     const docRef = doc(db, SETTINGS_COLLECTION, EXAM_COUNTDOWN_DOC_ID);
-    const payload: ExamCountdownConfig = {
-      title: config.title || 'นับถอยหลังวันเวลาสอบสภาเทคนิคการแพทย์',
-      organizer: config.organizer || 'เพจเล่าเรื่องจากห้องแล็บ',
-      targetDateTime: config.targetDateTime || null,
-      note: config.note || '',
-      updatedBy: config.updatedBy || 'แอดมิน',
-      updatedAt: Date.now()
-    };
-    await setDoc(docRef, payload, { merge: true });
-    try {
-      localStorage.setItem('mt_feed_exam_countdown_config', JSON.stringify(payload));
-    } catch {}
+    // Add timeout protection so slow networks never block the client UI
+    const setDocPromise = setDoc(docRef, payload, { merge: true });
+    const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 2500));
+    await Promise.race([setDocPromise, timeoutPromise]);
     systemHealthManager.reportFirestoreSuccess();
   } catch (e) {
-    console.error('Failed to save exam countdown config to Firestore:', e);
-    try {
-      localStorage.setItem('mt_feed_exam_countdown_config', JSON.stringify(config));
-    } catch {}
+    console.warn('Firestore setDoc notice for exam countdown:', e);
   }
 }
 

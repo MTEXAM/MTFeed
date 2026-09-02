@@ -111,8 +111,11 @@ export interface Trend {
 export interface ExamCountdownConfig {
   title: string;
   organizer: string;
-  targetDateTime: string | null; // ISO string e.g. "2026-09-11T12:32:00" or null
+  targetDateTime: string | null; // Start ISO string e.g. "2026-09-11T08:30:00+07:00" or null
+  endDateTime?: string | null; // End ISO string e.g. "2026-09-11T12:00:00+07:00" or null
   note?: string;
+  calendarEventId?: string | null;
+  calendarHtmlLink?: string | null;
   updatedBy?: string;
   updatedAt?: number;
 }
