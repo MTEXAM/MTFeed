@@ -14,6 +14,7 @@ import { UserProfileModal } from './components/UserProfileModal';
 import { PostItem } from './components/PostItem';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SystemHealthModal } from './components/SystemHealthModal';
+import { EmergencyAdminModal } from './components/EmergencyAdminModal';
 import { SystemToastContainer, ToastItem } from './components/SystemToast';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post, User } from './types';
@@ -215,7 +216,25 @@ export default function App() {
   const [isOnlineModalOpen, setIsOnlineModalOpen] = useState(false);
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
   const [isSystemHealthModalOpen, setIsSystemHealthModalOpen] = useState(false);
+  const [isEmergencyAdminModalOpen, setIsEmergencyAdminModalOpen] = useState(false);
   const [healthState, setHealthState] = useState<SystemHealthState>(() => systemHealthManager.getState());
+
+  const handleEmergencyLoginSuccess = (adminUser: SessionUser) => {
+    setUser(adminUser);
+    try {
+      localStorage.setItem('mtfeed_user', JSON.stringify(adminUser));
+      sessionStorage.setItem('mtfeed_user', JSON.stringify(adminUser));
+    } catch (e) {
+      console.error(e);
+    }
+    setSystemToasts(prev => [...prev, {
+      id: `toast_emergency_${Date.now()}`,
+      type: 'success',
+      message: '🚨 เข้าสู่ระบบ Admin ฉุกเฉินสำเร็จ! (Emergency Access Unlocked)',
+      submessage: 'สามารถเข้าถึงการตั้งค่าและแอดมินบอร์ดได้ 100% แม้เซิร์ฟเวอร์หลักมีปัญหา'
+    }]);
+    setIsAdminBoardOpen(true);
+  };
   // Interaction Cooldown state
   const lastInteractionRef = useRef<number>(0);
   const [systemToasts, setSystemToasts] = useState<ToastItem[]>([]);
@@ -1436,6 +1455,18 @@ export default function App() {
         </div>
       )}
 
+      {/* Emergency Admin Bypass Banner */}
+      {user?.isEmergencyAdmin && (
+        <div className="bg-gradient-to-r from-red-700 via-rose-800 to-red-900 text-white text-xs font-bold py-2 px-4 flex items-center justify-between shadow-md border-b border-red-600">
+          <div className="flex items-center space-x-2 max-w-7xl mx-auto w-full">
+            <span className="bg-yellow-400 text-red-950 px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider animate-pulse">
+              Emergency Bypass Active
+            </span>
+            <span>🚨 โหมดแอดมินฉุกเฉิน (Bypass Mode) — ปลดล็อกสิทธิ์แอดมิน 100% สำหรับเข้าตั้งค่าและดูแลระบบ</span>
+          </div>
+        </div>
+      )}
+
       <Navbar 
         user={user} 
         onLoginClick={() => window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')} 
@@ -1452,6 +1483,7 @@ export default function App() {
         onRefreshSheets={() => performSheetsSync(true)}
         healthState={healthState}
         onOpenSystemHealth={() => setIsSystemHealthModalOpen(true)}
+        onOpenEmergencyAdmin={() => setIsEmergencyAdminModalOpen(true)}
       />
       
       {sharedPostId ? (
@@ -1654,6 +1686,7 @@ export default function App() {
         isOpen={isAuthModalOpen} 
         onClose={() => setIsAuthModalOpen(false)} 
         onLogin={handleLogin}
+        onOpenEmergencyAdmin={() => setIsEmergencyAdminModalOpen(true)}
       />
 
       <EditProfileModal
@@ -1787,15 +1820,21 @@ export default function App() {
         />
       )}
 
-      {/* System Health & Multi-tier Failover Monitor Modal (Admin Only) */}
-      {user?.isAdmin && (
-        <SystemHealthModal
-          isOpen={isSystemHealthModalOpen}
-          onClose={() => setIsSystemHealthModalOpen(false)}
-          healthState={healthState}
-          onForceSyncAll={handleForceSyncAll}
-        />
-      )}
+      {/* System Health & Multi-tier Failover Monitor Modal */}
+      <SystemHealthModal
+        isOpen={isSystemHealthModalOpen}
+        onClose={() => setIsSystemHealthModalOpen(false)}
+        healthState={healthState}
+        onForceSyncAll={handleForceSyncAll}
+        onOpenEmergencyAdmin={() => setIsEmergencyAdminModalOpen(true)}
+      />
+
+      {/* Emergency Admin Passcode Verification Modal */}
+      <EmergencyAdminModal
+        isOpen={isEmergencyAdminModalOpen}
+        onClose={() => setIsEmergencyAdminModalOpen(false)}
+        onEmergencyLoginSuccess={handleEmergencyLoginSuccess}
+      />
 
       {/* Real-time System Resilience Toast Container (Admin Only) */}
       {user?.isAdmin && (

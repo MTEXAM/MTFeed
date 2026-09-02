@@ -19,6 +19,7 @@ export interface SessionUser {
   avatar?: string;
   email?: string;
   isAdmin: boolean;
+  isEmergencyAdmin?: boolean;
   needsAdminVerification?: boolean;
   userGroup?: string;
   academicYear?: string;
@@ -105,4 +106,13 @@ export interface Trend {
   id: string;
   tag: string;
   postCount: number;
+}
+
+export interface ExamCountdownConfig {
+  title: string;
+  organizer: string;
+  targetDateTime: string | null; // ISO string e.g. "2026-09-11T12:32:00" or null
+  note?: string;
+  updatedBy?: string;
+  updatedAt?: number;
 }

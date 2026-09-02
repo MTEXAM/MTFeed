@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Image as ImageIcon, BarChart2, Hash, Ghost, Smile, X, AtSign, Link2 } from 'lucide-react';
+import { BarChart2, Hash, Ghost, Smile, X, AtSign, Link2 } from 'lucide-react';
 import { PollOption, SessionUser } from '../types';
 import { maskUid } from '../utils/auth';
 
@@ -20,14 +20,12 @@ export function PostComposer({
 }) {
   const [content, setContent] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(false);
-  const [image, setImage] = useState<string | undefined>();
   const [showPoll, setShowPoll] = useState(false);
   const [showMentionMenu, setShowMentionMenu] = useState(false);
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkInputUrl, setLinkInputUrl] = useState('');
   const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
   
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const mentionMenuRef = useRef<HTMLDivElement>(null);
   const linkMenuRef = useRef<HTMLDivElement>(null);
 
@@ -57,7 +55,7 @@ export function PostComposer({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedContent = (content || '').trim();
-    if (!trimmedContent && !image) return;
+    if (!trimmedContent) return;
     
     let pollData;
     if (showPoll && pollOptions.filter(o => typeof o === 'string' && o.trim()).length >= 2) {
@@ -72,52 +70,13 @@ export function PostComposer({
       };
     }
     
-    onPost(trimmedContent, isAnonymous, image, pollData);
+    onPost(trimmedContent, isAnonymous, undefined, pollData);
     setContent('');
     setIsAnonymous(false);
-    setImage(undefined);
     setShowPoll(false);
     setShowMentionMenu(false);
     setShowLinkInput(false);
     setPollOptions(['', '']);
-  };
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const img = new Image();
-        img.src = reader.result as string;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          const MAX_DIM = 1000;
-          if (width > height && width > MAX_DIM) {
-            height = Math.round((height * MAX_DIM) / width);
-            width = MAX_DIM;
-          } else if (height > MAX_DIM) {
-            width = Math.round((width * MAX_DIM) / height);
-            height = MAX_DIM;
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.82);
-            setImage(compressedBase64);
-          } else {
-            setImage(reader.result as string);
-          }
-        };
-        img.onerror = () => {
-          setImage(reader.result as string);
-        };
-      };
-      reader.readAsDataURL(file);
-    }
   };
 
   const handleInsertMention = (username: string) => {
@@ -188,19 +147,6 @@ export function PostComposer({
               />
             </div>
             
-            {image && (
-              <div className="relative mt-2 inline-block">
-                <img src={image} alt="Uploaded" className="max-h-64 rounded-xl object-contain border border-gray-200" />
-                <button
-                  type="button"
-                  onClick={() => setImage(undefined)}
-                  className="absolute top-2 right-2 p-1 bg-gray-900/50 hover:bg-gray-900/70 text-white rounded-full transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-
             {showPoll && (
               <div className="mt-3 p-4 bg-gray-50 rounded-xl border border-gray-200">
                 <div className="flex justify-between items-center mb-2">
@@ -238,21 +184,6 @@ export function PostComposer({
             {/* Action buttons and Post button */}
             <div className="mt-4 flex items-center justify-between pt-2 border-t border-gray-100 relative">
               <div className="flex space-x-1 sm:space-x-2 items-center flex-wrap gap-y-1">
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  onChange={handleImageUpload} 
-                  accept="image/*" 
-                  className="hidden" 
-                />
-                <button 
-                  type="button" 
-                  onClick={() => fileInputRef.current?.click()} 
-                  className="inline-flex items-center p-2 rounded-full text-red-600 hover:bg-red-50 transition-colors" 
-                  title="แนบรูปภาพ/สไลด์"
-                >
-                  <ImageIcon className="h-5 w-5" />
-                </button>
                 <button 
                   type="button" 
                   onClick={() => setShowPoll(!showPoll)} 
@@ -389,7 +320,7 @@ export function PostComposer({
                 <button
                   type="submit"
                   className="inline-flex items-center px-6 py-2 border border-transparent text-sm font-bold rounded-full shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 transition-colors"
-                  disabled={content.trim().length === 0 && !image}
+                  disabled={content.trim().length === 0}
                 >
                   โพสต์
                 </button>

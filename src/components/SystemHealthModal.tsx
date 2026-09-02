@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, Database, Cloud, RefreshCw, HardDrive, CheckCircle2, AlertTriangle, Wifi, WifiOff, FileSpreadsheet, Lock } from 'lucide-react';
+import { X, ShieldCheck, Database, Cloud, RefreshCw, HardDrive, CheckCircle2, AlertTriangle, Wifi, WifiOff, FileSpreadsheet, Lock, ShieldAlert } from 'lucide-react';
 import { SystemHealthState, systemHealthManager } from '../utils/systemHealthService';
 
 export function SystemHealthModal({
   isOpen,
   onClose,
   healthState,
-  onForceSyncAll
+  onForceSyncAll,
+  onOpenEmergencyAdmin
 }: {
   isOpen: boolean;
   onClose: () => void;
   healthState: SystemHealthState;
   onForceSyncAll: () => Promise<void>;
+  onOpenEmergencyAdmin?: () => void;
 }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncSuccessMsg, setSyncSuccessMsg] = useState<string | null>(null);
@@ -232,6 +234,30 @@ export function SystemHealthModal({
                 className="px-2.5 py-1 bg-amber-600 text-white rounded-lg font-medium hover:bg-amber-700 transition-colors cursor-pointer"
               >
                 ส่งทันที
+              </button>
+            </div>
+          )}
+
+          {/* Emergency Access Bypass Button */}
+          {onOpenEmergencyAdmin && (
+            <div className="p-3.5 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-between mt-3">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 bg-gray-200 text-gray-700 rounded-lg">
+                  <Lock className="w-5 h-5 text-gray-600" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-gray-800">ระบบปลดล็อกฉุกเฉิน (Emergency Access)</h4>
+                  <p className="text-[11px] text-gray-500">ปลดล็อกระบบด้วยรหัสผ่านความปลอดภัยเฉพาะกิจ</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenEmergencyAdmin();
+                }}
+                className="px-3 py-1.5 bg-gray-800 hover:bg-black text-white font-medium text-xs rounded-xl shadow-xs transition-colors cursor-pointer flex-shrink-0"
+              >
+                ปลดล็อกระบบ
               </button>
             </div>
           )}

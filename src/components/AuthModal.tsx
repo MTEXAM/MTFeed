@@ -1,14 +1,16 @@
 import React, { useState, useRef } from 'react';
-import { X, Lock, User, ShieldCheck, Camera, Sparkles, Upload, Trash2, ArrowRight } from 'lucide-react';
+import { X, Lock, User, ShieldCheck, Camera, Sparkles, Upload, Trash2, ArrowRight, ShieldAlert, KeyRound } from 'lucide-react';
 
 export function AuthModal({ 
   isOpen, 
   onClose, 
-  onLogin 
+  onLogin,
+  onOpenEmergencyAdmin
 }: { 
   isOpen: boolean; 
   onClose: () => void; 
   onLogin: (username: string, isAdmin: boolean, verifiedAdmin?: boolean, avatar?: string, displayName?: string) => void;
+  onOpenEmergencyAdmin?: () => void;
 }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -245,6 +247,23 @@ export function AuthModal({
             <ArrowRight className="w-4 h-4 ml-1.5" />
           </button>
         </form>
+
+        {/* Emergency Admin Access Banner */}
+        {onOpenEmergencyAdmin && (
+          <div className="px-6 pt-3 pb-0">
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenEmergencyAdmin();
+              }}
+              className="w-full py-2 px-3 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-gray-500" />
+              <span>เข้าสู่ระบบด้วยรหัสผ่านฉุกเฉิน (Emergency Access)</span>
+            </button>
+          </div>
+        )}
 
         {/* Quick test accounts */}
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">

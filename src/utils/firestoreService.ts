@@ -12,7 +12,7 @@ import {
   writeBatch 
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Post, SessionUser, Comment, AppNotification } from '../types';
+import { Post, SessionUser, Comment, AppNotification, ExamCountdownConfig } from '../types';
 import { INITIAL_POSTS } from '../data';
 import { DEFAULT_ACTIVE_USERS } from './auth';
 import { syncProfileToGoogleSheets, syncPostToGoogleSheets, syncDeletePostToGoogleSheets } from './googleSheetsService';
@@ -21,6 +21,7 @@ import { formatRealTime } from './timeUtils';
 
 const USERS_COLLECTION = 'users';
 const POSTS_COLLECTION = 'posts';
+const SETTINGS_COLLECTION = 'system_settings';
 
 // Seed initial default users to Firestore if collection is brand new
 export async function seedInitialUsers(): Promise<void> {
@@ -867,4 +868,69 @@ export function subscribeToSystemNotifications(onNotificationsUpdate: (notificat
     return () => {};
   }
 }
+
+// -------------------------------------------------------------
+// Exam Countdown Realtime System Configuration (Sync with Firestore)
+// -------------------------------------------------------------
+const EXAM_COUNTDOWN_DOC_ID = 'exam_countdown';
+
+export async function saveExamCountdownConfig(config: ExamCountdownConfig): Promise<void> {
+  try {
+    const docRef = doc(db, SETTINGS_COLLECTION, EXAM_COUNTDOWN_DOC_ID);
+    const payload: ExamCountdownConfig = {
+      title: config.title || 'นับถอยหลังวันเวลาสอบสภาเทคนิคการแพทย์',
+      organizer: config.organizer || 'เพจเล่าเรื่องจากห้องแล็บ',
+      targetDateTime: config.targetDateTime || null,
+      note: config.note || '',
+      updatedBy: config.updatedBy || 'แอดมิน',
+      updatedAt: Date.now()
+    };
+    await setDoc(docRef, payload, { merge: true });
+    try {
+      localStorage.setItem('mt_feed_exam_countdown_config', JSON.stringify(payload));
+    } catch {}
+    systemHealthManager.reportFirestoreSuccess();
+  } catch (e) {
+    console.error('Failed to save exam countdown config to Firestore:', e);
+    try {
+      localStorage.setItem('mt_feed_exam_countdown_config', JSON.stringify(config));
+    } catch {}
+  }
+}
+
+export function subscribeToExamCountdownConfig(onUpdate: (config: ExamCountdownConfig | null) => void) {
+  try {
+    const docRef = doc(db, SETTINGS_COLLECTION, EXAM_COUNTDOWN_DOC_ID);
+    return onSnapshot(docRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data() as ExamCountdownConfig;
+        try {
+          localStorage.setItem('mt_feed_exam_countdown_config', JSON.stringify(data));
+        } catch {}
+        systemHealthManager.reportFirestoreSuccess();
+        onUpdate(data);
+      } else {
+        // Not set yet in Firestore - fallback to local storage or null
+        try {
+          const cached = localStorage.getItem('mt_feed_exam_countdown_config');
+          if (cached) {
+            onUpdate(JSON.parse(cached));
+            return;
+          }
+        } catch {}
+        onUpdate(null);
+      }
+    }, (error) => {
+      console.warn('Firestore exam countdown subscription error:', error);
+      try {
+        const cached = localStorage.getItem('mt_feed_exam_countdown_config');
+        if (cached) onUpdate(JSON.parse(cached));
+      } catch {}
+    });
+  } catch (e) {
+    console.error('Failed to subscribe to exam countdown:', e);
+    return () => {};
+  }
+}
+
 

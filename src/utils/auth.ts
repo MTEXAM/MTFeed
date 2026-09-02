@@ -47,14 +47,14 @@ export const DEFAULT_ACTIVE_USERS: Record<string, SessionUser> = {
   },
   'BANK2026': {
     uid: 'BANK2026',
-    username: 'admin_master',
-    name: 'Admin Bank',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin_master',
-    isAdmin: true,
-    userGroup: '👑 Admin',
-    academicYear: 'ปี 5+',
+    username: 'bank2026',
+    name: 'Bank',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=bank2026',
+    isAdmin: false,
+    userGroup: '',
+    academicYear: 'ปี 4',
     faculty: 'คณะเทคนิคการแพทย์',
-    badge: '👑 Admin'
+    badge: ''
   },
   'MED67012': {
     uid: 'MED67012',
@@ -90,7 +90,20 @@ export function getRegisteredUsers(): Record<string, SessionUser> {
       localStorage.setItem(REGISTRY_KEY, JSON.stringify(DEFAULT_ACTIVE_USERS));
       return { ...DEFAULT_ACTIVE_USERS };
     }
-    const parsed = JSON.parse(raw);
+    const parsed: Record<string, SessionUser> = JSON.parse(raw);
+    
+    // Security Sanitize: Ensure only MED68001 can ever be Admin
+    for (const key in parsed) {
+      const u = parsed[key];
+      if (u) {
+        const isTrueAdmin = (u.uid === 'MED68001' || u.uid === '#MED68001' || u.username === 'bank');
+        if (!isTrueAdmin && u.isAdmin) {
+          u.isAdmin = false;
+          u.badge = '';
+          u.userGroup = '';
+        }
+      }
+    }
     return parsed;
   } catch (e) {
     console.error('Failed to load accounts registry', e);
@@ -313,20 +326,26 @@ export function resolveUserAccount(params: {
   }
 
   // --- Strict Role Security Check ---
-  // 1. ตรวจสอบค่า role จาก URL parameter
+  // 1. ตรวจสอบค่า role และ verifiedAdmin
   const rawRole = (params.role || '').toLowerCase().trim();
   const isRequestingAdmin = rawRole === 'admin' || rawRole === 'true' || rawRole === '1';
 
-  // 2. เฉพาะกรณีที่ uid === "MED68001" หรือ "#MED68001" เท่านั้นที่จะยอมรับสิทธิ์ให้เป็น "admin" ได้
-  const isValidAdminUid = uid === 'MED68001' || uid === '#MED68001';
+  // 2. ยอมรับสิทธิ์ Admin เฉพาะ UID MED68001 หรือ #MED68001 เท่านั้น (ห้ามบัญชีอื่นโดยเด็ดขาด)
+  const isTargetingAdmin = 
+    uid === 'MED68001' || 
+    uid === '#MED68001' || 
+    lowerUsername === 'bank' || 
+    lowerUsername === 'med68001';
 
-  // 3. หากส่ง role=admin มาแต่ uid ไม่ใช่ "MED68001" ให้ทำการดาวน์เกรดเป็นผู้ใช้ทั่วไปทันที
+  const isValidAdmin = isTargetingAdmin && (params.verifiedAdmin === true || isRequestingAdmin || !params.role);
+
   let validatedRole = 'user';
   let isAdmin = false;
 
-  if (isValidAdminUid || (isRequestingAdmin && isValidAdminUid)) {
+  if (isValidAdmin) {
     validatedRole = 'admin';
     isAdmin = true;
+    uid = 'MED68001';
   } else {
     // Downgraded or standard user
     validatedRole = 'user';
