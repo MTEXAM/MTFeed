@@ -138,10 +138,6 @@ export function saveRegisteredUser(user: SessionUser): void {
     }
     // Async save to Cloud Firestore
     saveUserToFirestore(registry[key]);
-    // Async sync profile to Google Sheets immediately (deduplicated in googleSheetsService)
-    if (registry[key]) {
-      syncProfileToGoogleSheets(registry[key]).catch(err => console.warn('[SHEETS INSTANT SYNC ERROR]', err));
-    }
   } catch (e) {
     console.error('Failed to save account to registry', e);
   }

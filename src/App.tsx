@@ -597,11 +597,6 @@ export default function App() {
               setExplicitAvatar(prev.uid || prev.id, resolvedAvatar);
             }
 
-            // If local avatar is custom image but Google Sheets is still showing dicebear, sync local custom avatar to Google Sheets
-            if (hasCustomLocalAvatar && isSheetDicebear) {
-              syncProfileToGoogleSheets({ ...prev, avatar: prev.avatar }).catch(e => console.warn(e));
-            }
-
             if (prev.name !== resolvedName || prev.avatar !== resolvedAvatar || prev.username !== resolvedUsername) {
               console.log('[GOOGLE SHEETS SYNC] User profile updated cleanly:', resolvedName);
               const updated = { 
@@ -954,6 +949,12 @@ export default function App() {
     setUser(updatedUser);
     saveRegisteredUser(updatedUser);
     saveUserToFirestore(updatedUser);
+    
+    // Explicit user action: sync profile to Google Sheets/Drive ONCE
+    syncProfileToGoogleSheets(updatedUser).then(() => {
+      // Refresh registered users from memory/storage
+      setRegisteredUsers(getAllRegisteredUsersList());
+    }).catch(e => console.warn('Failed to sync profile update to Google Sheets:', e));
     
     try {
       localStorage.setItem('mtfeed_user', JSON.stringify(updatedUser));
