@@ -26,16 +26,23 @@ export async function syncProfileToGoogleSheets(user: Partial<SessionUser>): Pro
   lastProfileSyncKey = syncKey;
   lastProfileSyncTime = now;
 
+  const cleanUsername = user.username ? user.username.replace(/^@/, '') : '';
   const payload = {
     action: 'updateProfile',
     uid: uid,
-    username: user.username ? user.username.replace(/^@/, '') : '',
+    username: cleanUsername,
     displayName: user.name || user.username || 'User',
     profileImage: user.avatar || '',
     deleteOld: true,
     replaceOld: true,
     deletePrevious: true,
     cleanOldFiles: true,
+    deleteOldDriveFiles: true,
+    deleteSameNameFiles: true,
+    deleteSameName: true,
+    removeDuplicates: true,
+    fileName: `profile_${uid || cleanUsername}`,
+    userKey: uid || cleanUsername,
     timestamp: now
   };
 

@@ -361,21 +361,29 @@ async function startServer() {
   app.post('/api/sheets/profile', async (req, res) => {
     try {
       const payload = req.body;
-      console.log('[SHEETS PROXY] Syncing profile to Google Sheets for UID:', payload.uid);
+      const uid = payload.uid || payload.id;
+      const username = (payload.username || '').replace(/^@/, '');
+      console.log('[SHEETS PROXY] Syncing profile to Google Sheets & removing old Drive files for UID:', uid);
 
       const resp = await fetch(GOOGLE_SHEETS_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'updateProfile',
-          uid: payload.uid || payload.id,
+          uid: uid,
           displayName: payload.displayName || payload.name || 'User',
-          username: payload.username || '',
+          username: username,
           profileImage: payload.profileImage || payload.avatar || '',
           deleteOld: true,
           replaceOld: true,
           deletePrevious: true,
           cleanOldFiles: true,
+          deleteOldDriveFiles: true,
+          deleteSameNameFiles: true,
+          deleteSameName: true,
+          removeDuplicates: true,
+          fileName: `profile_${uid || username}`,
+          userKey: uid || username,
           timestamp: Date.now()
         })
       });

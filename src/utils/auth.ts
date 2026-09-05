@@ -206,10 +206,10 @@ export function clearAllRegisteredUsers(keepUser?: SessionUser): void {
       newRegistry[keepUser.uid] = keepUser;
     } else {
       const defaultAdmin: SessionUser = {
-        id: 'BANK2026',
-        uid: 'BANK2026',
-        username: 'admin_bank',
-        name: 'Admin Bank',
+        id: 'MED68001',
+        uid: 'MED68001',
+        username: 'bank',
+        name: 'Bank',
         avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5',
         isAdmin: true,
         userGroup: '👑 Admin',
@@ -217,7 +217,7 @@ export function clearAllRegisteredUsers(keepUser?: SessionUser): void {
         faculty: 'คณะเทคนิคการแพทย์',
         badge: '👑 Admin'
       };
-      newRegistry['BANK2026'] = defaultAdmin;
+      newRegistry['MED68001'] = defaultAdmin;
     }
     localStorage.setItem(REGISTRY_KEY, JSON.stringify(newRegistry));
     if (mtFeedChannel) {
@@ -336,14 +336,13 @@ export function getAllRegisteredUsersList(): SessionUser[] {
   }
 }
 
-// Define admin UIDs centrally
-export const ADMIN_UIDS = ['MED68001', 'BANK2026'];
+// Define admin UIDs centrally - ONLY MED68001 allowed
+export const ADMIN_UIDS = ['MED68001'];
 
 export function isAdmin(user: any): boolean {
   if (!user) return false;
-  const isExplicitAdmin = Boolean(user.isAdmin || user.badge === '👑 Admin');
-  const hasAdminId = ADMIN_UIDS.includes(user.id || user.uid);
-  return isExplicitAdmin && hasAdminId;
+  const uid = String(user.uid || user.id || '').replace(/^[@#]/, '').toUpperCase();
+  return uid === 'MED68001' && Boolean(user.isAdmin || user.badge === '👑 Admin');
 }
 
 export function getExplicitAvatar(uid: string | undefined | null): string | null {

@@ -1,19 +1,16 @@
 import React, { useState, useRef } from 'react';
-import { X, Lock, User, ShieldCheck, Camera, Sparkles, Upload, Trash2, ArrowRight, ShieldAlert, KeyRound } from 'lucide-react';
+import { X, User, ShieldCheck, Camera, Sparkles, Upload, Trash2, ArrowRight } from 'lucide-react';
 
 export function AuthModal({ 
   isOpen, 
   onClose, 
-  onLogin,
-  onOpenEmergencyAdmin
+  onLogin
 }: { 
   isOpen: boolean; 
   onClose: () => void; 
   onLogin: (username: string, isAdmin: boolean, verifiedAdmin?: boolean, avatar?: string, displayName?: string) => void;
-  onOpenEmergencyAdmin?: () => void;
 }) {
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [avatar, setAvatar] = useState('');
   const [isProcessingImage, setIsProcessingImage] = useState(false);
@@ -22,11 +19,7 @@ export function AuthModal({
   if (!isOpen) return null;
 
   const cleanUser = username.trim() || 'medtech_student';
-  const previewAvatar = avatar || (
-    cleanUser.toLowerCase() === 'bank' || cleanUser.toLowerCase() === 'admin'
-      ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5'
-      : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanUser)}&backgroundColor=cccccc`
-  );
+  const previewAvatar = avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanUser)}&backgroundColor=cccccc`;
 
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -85,14 +78,7 @@ export function AuthModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const finalUsername = username.trim() || 'medtech_user';
-    const isAdminPassword = password.trim() === 'Bank2546';
-    
-    if (isAdminPassword && (finalUsername.toLowerCase() === 'bank' || finalUsername.toLowerCase() === 'admin')) {
-      sessionStorage.setItem(`mt_admin_verified_${finalUsername}`, 'true');
-      onLogin(finalUsername, true, true, avatar || undefined, displayName.trim() || undefined);
-    } else {
-      onLogin(finalUsername, false, false, avatar || undefined, displayName.trim() || undefined);
-    }
+    onLogin(finalUsername, false, false, avatar || undefined, displayName.trim() || undefined);
     onClose();
   };
 
@@ -218,27 +204,6 @@ export function AuthModal({
             />
           </div>
 
-          <div>
-            <div className="flex justify-between items-center mb-1.5">
-              <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                รหัสผ่าน (เฉพาะบัญชี Admin)
-              </label>
-              <span className="text-[10px] text-gray-400">สำหรับสมาชิกทั่วไปไม่ต้องกรอก</span>
-            </div>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                <Lock className="h-4 w-4 text-gray-400" />
-              </div>
-              <input 
-                type="password" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="block w-full pl-10 pr-3.5 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm outline-none transition-all" 
-                placeholder="กรอกรหัสผ่านเฉพาะเมื่อต้องการสิทธิ์ Admin" 
-              />
-            </div>
-          </div>
-
           <button 
             type="submit" 
             className="w-full flex justify-center items-center py-2.5 px-4 rounded-xl shadow-xs text-sm font-bold text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 mt-6 transition-colors cursor-pointer"
@@ -247,23 +212,6 @@ export function AuthModal({
             <ArrowRight className="w-4 h-4 ml-1.5" />
           </button>
         </form>
-
-        {/* Emergency Admin Access Banner */}
-        {onOpenEmergencyAdmin && (
-          <div className="px-6 pt-3 pb-0">
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                onOpenEmergencyAdmin();
-              }}
-              className="w-full py-2 px-3 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
-            >
-              <KeyRound className="w-3.5 h-3.5 text-gray-500" />
-              <span>เข้าสู่ระบบด้วยรหัสผ่านฉุกเฉิน (Emergency Access)</span>
-            </button>
-          </div>
-        )}
 
         {/* Quick test accounts */}
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">

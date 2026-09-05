@@ -10,7 +10,6 @@ export function OnlineMembersModal({
   registeredUsers = [],
   onDeleteUser,
   onClearAllUsers,
-  onVerifyAdmin,
   onSelectUserForPost,
   onViewProfile
 }: {
@@ -27,13 +26,10 @@ export function OnlineMembersModal({
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<SessionUser | null>(null);
   const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
   const [deleteSuccessMsg, setDeleteSuccessMsg] = useState<string | null>(null);
-  const [adminPassword, setAdminPassword] = useState('');
-  const [adminError, setAdminError] = useState(false);
-  const [isUnlockedAdmin, setIsUnlockedAdmin] = useState(false);
 
   if (!isOpen) return null;
 
-  const isAdmin = Boolean(currentUser?.isAdmin || isUnlockedAdmin);
+  const isAdmin = Boolean(currentUser?.isAdmin);
 
   // Combine current user + registered accounts from registry (de-duplicated by username or uid)
   const usersMap = new Map<string, SessionUser>();
@@ -82,20 +78,6 @@ export function OnlineMembersModal({
     }
   };
 
-  const handleUnlockAdmin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminPassword.trim() === 'Bank2546') {
-      setIsUnlockedAdmin(true);
-      setAdminError(false);
-      setAdminPassword('');
-      if (onVerifyAdmin) {
-        onVerifyAdmin('Bank2546');
-      }
-    } else {
-      setAdminError(true);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
       <div className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95 duration-200">
@@ -136,36 +118,6 @@ export function OnlineMembersModal({
               <span>{deleteSuccessMsg}</span>
             </div>
           </div>
-        )}
-
-        {/* Admin Unlock Bar if not admin */}
-        {!isAdmin && (
-          <form onSubmit={handleUnlockAdmin} className="p-3 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-200 flex items-center justify-between gap-2">
-            <div className="flex items-center space-x-1.5 text-xs text-amber-900 font-medium">
-              <Lock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-              <span>ปลดล็อคสิทธิ์แอดมิน:</span>
-            </div>
-            <div className="flex items-center space-x-1.5 flex-1 max-w-[220px]">
-              <input
-                type="password"
-                value={adminPassword}
-                onChange={(e) => {
-                  setAdminPassword(e.target.value);
-                  if (adminError) setAdminError(false);
-                }}
-                placeholder="รหัสผ่าน Admin..."
-                className={`w-full px-2.5 py-1 text-xs border rounded-lg outline-none bg-white ${
-                  adminError ? 'border-red-500 ring-1 ring-red-300' : 'border-amber-300 focus:border-amber-500'
-                }`}
-              />
-              <button
-                type="submit"
-                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors whitespace-nowrap"
-              >
-                ปลดล็อค
-              </button>
-            </div>
-          </form>
         )}
 
         {/* Admin Top Actions Bar if Admin */}

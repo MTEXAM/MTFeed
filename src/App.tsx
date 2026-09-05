@@ -14,7 +14,6 @@ import { UserProfileModal } from './components/UserProfileModal';
 import { PostItem } from './components/PostItem';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SystemHealthModal } from './components/SystemHealthModal';
-import { EmergencyAdminModal } from './components/EmergencyAdminModal';
 import { SystemToastContainer, ToastItem } from './components/SystemToast';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post, User } from './types';
@@ -204,26 +203,7 @@ export default function App() {
   const [isOnlineModalOpen, setIsOnlineModalOpen] = useState(false);
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
   const [isSystemHealthModalOpen, setIsSystemHealthModalOpen] = useState(false);
-  const [isEmergencyAdminModalOpen, setIsEmergencyAdminModalOpen] = useState(false);
-  const [showEmergencyAlert, setShowEmergencyAlert] = useState(true);
   const [healthState, setHealthState] = useState<SystemHealthState>(() => systemHealthManager.getState());
-
-  const handleEmergencyLoginSuccess = (adminUser: SessionUser) => {
-    setUser(adminUser);
-    try {
-      localStorage.setItem('mtfeed_user', JSON.stringify(adminUser));
-      sessionStorage.setItem('mtfeed_user', JSON.stringify(adminUser));
-    } catch (e) {
-      console.error(e);
-    }
-    setSystemToasts(prev => [...prev, {
-      id: `toast_emergency_${Date.now()}`,
-      type: 'success',
-      message: '🚨 เข้าสู่ระบบ Admin ฉุกเฉินสำเร็จ! (Emergency Access Unlocked)',
-      submessage: 'สามารถเข้าถึงการตั้งค่าและแอดมินบอร์ดได้ 100% แม้เซิร์ฟเวอร์หลักมีปัญหา'
-    }]);
-    setIsAdminBoardOpen(true);
-  };
   // Interaction Cooldown state
   const lastInteractionRef = useRef<number>(0);
   const [systemToasts, setSystemToasts] = useState<ToastItem[]>([]);
@@ -1723,7 +1703,6 @@ export default function App() {
         isOpen={isAuthModalOpen} 
         onClose={() => setIsAuthModalOpen(false)} 
         onLogin={handleLogin}
-        onOpenEmergencyAdmin={() => setIsEmergencyAdminModalOpen(true)}
       />
 
       <EditProfileModal
@@ -1774,18 +1753,6 @@ export default function App() {
         registeredUsers={registeredUsers}
         onDeleteUser={handleDeleteUser}
         onClearAllUsers={handleClearAllUsers}
-        onVerifyAdmin={(pwd) => {
-          if (pwd === 'Bank2546') {
-            if (user) {
-              const updated = { ...user, isAdmin: true, needsAdminVerification: false };
-              setUser(updated);
-              localStorage.setItem('mtfeed_user', JSON.stringify(updated));
-              sessionStorage.setItem('mtfeed_user', JSON.stringify(updated));
-            }
-            return true;
-          }
-          return false;
-        }}
         onSelectUserForPost={(mention) => {
           setExternalSharedText(mention);
         }}
@@ -1863,14 +1830,6 @@ export default function App() {
         onClose={() => setIsSystemHealthModalOpen(false)}
         healthState={healthState}
         onForceSyncAll={handleForceSyncAll}
-        onOpenEmergencyAdmin={() => setIsEmergencyAdminModalOpen(true)}
-      />
-
-      {/* Emergency Admin Passcode Verification Modal */}
-      <EmergencyAdminModal
-        isOpen={isEmergencyAdminModalOpen}
-        onClose={() => setIsEmergencyAdminModalOpen(false)}
-        onEmergencyLoginSuccess={handleEmergencyLoginSuccess}
       />
 
       {/* Real-time System Resilience Toast Container (Admin Only) */}
