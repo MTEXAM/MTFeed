@@ -18,7 +18,7 @@ import { EmergencyAdminModal } from './components/EmergencyAdminModal';
 import { SystemToastContainer, ToastItem } from './components/SystemToast';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post, User } from './types';
-import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid, formatUserBadge, DEFAULT_ACTIVE_USERS } from './utils/auth';
+import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid, formatUserBadge, DEFAULT_ACTIVE_USERS, MAIN_SITE_URL, MAIN_SITE_HOST } from './utils/auth';
 import { subscribeToPosts, subscribeToUsers, subscribeToSystemNotifications, sendSystemBroadcastToFirestore, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, getPostSignature, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore, syncPostsToFirestore, getUserFromFirestore, getBackupPostsFromSQLite, getBackupUsersFromSQLite, restoreBackupsToFirestore } from './utils/firestoreService';
 import { fetchFeedFromGoogleSheets, fetchProfileFromGoogleSheets, syncProfileToGoogleSheets, syncPostToGoogleSheets, extractProfilesFromSheetPosts } from './utils/googleSheetsService';
 import { systemHealthManager, SystemHealthState } from './utils/systemHealthService';
@@ -121,6 +121,7 @@ function getInitialUser(): SessionUser | null {
       console.log('Debug - Referrer detected:', referrer);
 
       const validReferrers = [
+        MAIN_SITE_HOST,
         'mtexam-passalldiwa.ai.studio',
         'mt-feed.vercel.app',
         'localhost',
@@ -217,6 +218,7 @@ export default function App() {
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
   const [isSystemHealthModalOpen, setIsSystemHealthModalOpen] = useState(false);
   const [isEmergencyAdminModalOpen, setIsEmergencyAdminModalOpen] = useState(false);
+  const [showEmergencyAlert, setShowEmergencyAlert] = useState(true);
   const [healthState, setHealthState] = useState<SystemHealthState>(() => systemHealthManager.getState());
 
   const handleEmergencyLoginSuccess = (adminUser: SessionUser) => {
@@ -858,11 +860,13 @@ export default function App() {
     if (typeof window !== 'undefined') {
       const referrer = document.referrer || '';
       if (
+        referrer.includes(MAIN_SITE_HOST) ||
         referrer.includes('mtexam-passalldiwa.ai.studio') || 
         referrer.includes('mt-feed.vercel.app') ||
         referrer.includes('localhost') ||
         referrer.includes('127.0.0.1') ||
-        referrer.includes('ai.studio')
+        referrer.includes('ai.studio') ||
+        referrer.includes('run.app')
       ) {
         isFromValidSource = true;
       }
@@ -1005,7 +1009,7 @@ export default function App() {
 
   const handleOpenExternalUrl = (url: string) => {
     // Whitelist MTExam so it opens directly without safety warning modal
-    if (url.includes('mtexam-passalldiwa.ai.studio')) {
+    if (url.includes(MAIN_SITE_HOST) || url.includes('mtexam-passalldiwa.ai.studio')) {
       const target = url.startsWith('http') ? url : `https://${url}`;
       window.open(target, '_blank', 'noopener,noreferrer');
       return;
@@ -1162,7 +1166,7 @@ export default function App() {
   const handleInteraction = (postId: string, type: 'reply' | 'repost' | 'like' | 'bookmark') => {
     if (isRapidFire()) return;
     if (!user && type !== 'reply') {
-      window.open('https://mtexam-passalldiwa.ai.studio/', '_blank');
+      window.open(MAIN_SITE_URL, '_blank');
       return;
     }
 
@@ -1262,7 +1266,7 @@ export default function App() {
   const handleVote = (postId: string, optionId: string) => {
     if (isRapidFire()) return;
     if (!user) {
-      window.open('https://mtexam-passalldiwa.ai.studio/', '_blank');
+      window.open(MAIN_SITE_URL, '_blank');
       return;
     }
 
@@ -1296,7 +1300,7 @@ export default function App() {
   const handleComment = (postId: string, content: string) => {
     if (isRapidFire()) return;
     if (!user) {
-      window.open('https://mtexam-passalldiwa.ai.studio/', '_blank');
+      window.open(MAIN_SITE_URL, '_blank');
       return;
     }
 
@@ -1425,7 +1429,7 @@ export default function App() {
             </span>
           </div>
           <a 
-            href="https://mtexam-passalldiwa.ai.studio/"
+            href={MAIN_SITE_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="px-3 py-1 bg-white text-amber-900 rounded-lg text-xs font-semibold hover:bg-amber-50 transition-colors shadow-sm ml-2 flex-shrink-0 text-center"
@@ -1456,22 +1460,29 @@ export default function App() {
       )}
 
       {/* Emergency Admin Bypass Banner */}
-      {user?.isEmergencyAdmin && (
+      {user?.isEmergencyAdmin && showEmergencyAlert && (
         <div className="bg-gradient-to-r from-red-700 via-rose-800 to-red-900 text-white text-xs font-bold py-2 px-4 flex items-center justify-between shadow-md border-b border-red-600">
           <div className="flex items-center space-x-2 max-w-7xl mx-auto w-full">
-            <span className="bg-yellow-400 text-red-950 px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider animate-pulse">
+            <span className="bg-yellow-400 text-red-950 px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider animate-pulse flex-shrink-0">
               Emergency Bypass Active
             </span>
-            <span>🚨 โหมดแอดมินฉุกเฉิน (Bypass Mode) — ปลดล็อกสิทธิ์แอดมิน 100% สำหรับเข้าตั้งค่าและดูแลระบบ</span>
+            <span className="flex-1 truncate">🚨 โหมดแอดมินฉุกเฉิน (Bypass Mode) — ปลดล็อกสิทธิ์แอดมิน 100% สำหรับเข้าตั้งค่าและดูแลระบบ</span>
+            <button
+              onClick={() => setShowEmergencyAlert(false)}
+              className="p-1 hover:bg-white/20 rounded-lg transition-colors ml-2 flex-shrink-0"
+              title="ปิดการแจ้งเตือนนี้"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}
 
       <Navbar 
         user={user} 
-        onLoginClick={() => window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')} 
+        onLoginClick={() => window.open(MAIN_SITE_URL, '_blank')} 
         onAdminClick={() => setIsAdminBoardOpen(true)}
-        onEditProfileClick={() => user ? setIsEditProfileOpen(true) : window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')}
+        onEditProfileClick={() => user ? setIsEditProfileOpen(true) : window.open(MAIN_SITE_URL, '_blank')}
         onViewProfile={handleViewProfile}
         onLogoutClick={handleLogout}
         searchQuery={searchQuery}
@@ -1576,7 +1587,7 @@ export default function App() {
               }}
               unreadCount={unreadNotificationsCount}
               onOpenNotifications={() => setIsNotificationsModalOpen(true)}
-              onEditProfileClick={() => user ? setIsEditProfileOpen(true) : window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')}
+              onEditProfileClick={() => user ? setIsEditProfileOpen(true) : window.open(MAIN_SITE_URL, '_blank')}
               onViewProfile={handleViewProfile}
               onLogoutClick={handleLogout}
               currentUser={user}
@@ -1587,7 +1598,7 @@ export default function App() {
               setPosts={setPosts}
               activeCategory={activeCategory} 
               user={user} 
-              onLoginClick={() => window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')} 
+              onLoginClick={() => window.open(MAIN_SITE_URL, '_blank')} 
               isAdminBoardOpen={isAdminBoardOpen}
               onCloseAdminBoard={() => setIsAdminBoardOpen(false)}
               externalSharedText={externalSharedText}
@@ -1628,10 +1639,10 @@ export default function App() {
                 <MessageSquare className="w-6 h-6" />
               </button>
               <a 
-                href="https://mtexam-passalldiwa.ai.studio/" 
+                href={MAIN_SITE_URL} 
                 onClick={(e) => {
                   e.preventDefault();
-                  handleOpenExternalUrl('https://mtexam-passalldiwa.ai.studio/');
+                  handleOpenExternalUrl(MAIN_SITE_URL);
                 }}
                 className="p-2 text-gray-700 hover:text-red-600 transition-colors flex flex-col items-center"
                 title="คลังข้อสอบ"
@@ -1653,7 +1664,7 @@ export default function App() {
                 </span>
               </button>
               <button 
-                onClick={() => user ? handleViewProfile(user) : window.open('https://mtexam-passalldiwa.ai.studio/', '_blank')} 
+                onClick={() => user ? handleViewProfile(user) : window.open(MAIN_SITE_URL, '_blank')} 
                 className="p-2 text-gray-500 hover:text-gray-900 transition-colors flex flex-col items-center"
                 title={user ? `@${user.username} (ดูโปรไฟล์และโพสต์)` : "เข้าสู่ระบบ"}
               >

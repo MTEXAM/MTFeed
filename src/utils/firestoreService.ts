@@ -387,6 +387,12 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
 
     return {
       ...primary,
+      image: primary.image || secondary.image,
+      pdfUrl: primary.pdfUrl || secondary.pdfUrl,
+      pdfName: primary.pdfName || secondary.pdfName,
+      pdfSize: primary.pdfSize || secondary.pdfSize,
+      pdf: primary.pdf || secondary.pdf,
+      poll: primary.poll || secondary.poll,
       comments: mergedComments,
       likedBy: mergedLikedBy,
       bookmarkedBy: mergedBookmarkedBy,

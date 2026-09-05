@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Repeat2, Heart, Bookmark, Share, Send, MoreHorizontal, Trash2, Flag, ExternalLink } from 'lucide-react';
+import { MessageCircle, Repeat2, Heart, Bookmark, Share, Send, MoreHorizontal, Trash2, Flag, ExternalLink, FileText, Download, Eye } from 'lucide-react';
 import { Post } from '../types';
-import { isAdmin, getBadgeStyle } from '../utils/auth';
+import { isAdmin, getBadgeStyle, MAIN_SITE_URL } from '../utils/auth';
 import { formatRelativeOrRealTime, formatFullDateTime } from '../utils/timeUtils';
 
 export function PostItem({ 
@@ -299,6 +299,59 @@ export function PostItem({
             </div>
           )}
 
+          {(post.pdfUrl || post.pdf?.url || (post.pdf && (post.pdf as any).data)) && (() => {
+            const rawPdfUrl = post.pdfUrl || post.pdf?.url || (post.pdf as any)?.data || '';
+            const pdfDisplayName = post.pdfName || post.pdf?.name || 'เอกสารประกอบการเรียน.pdf';
+            const pdfSizeFormatted = post.pdfSize ? `${(post.pdfSize / (1024 * 1024)).toFixed(1)} MB` : '';
+
+            return (
+              <div className="mt-3 p-3.5 bg-gradient-to-r from-red-50/90 to-amber-50/50 border border-red-200/80 rounded-2xl flex items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-11 h-11 rounded-xl bg-red-600 text-white flex flex-col items-center justify-center font-bold shadow-xs flex-shrink-0">
+                    <FileText className="w-5 h-5" />
+                    <span className="text-[9px] uppercase tracking-wider font-extrabold">PDF</span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-gray-900 truncate max-w-[200px] sm:max-w-xs md:max-w-sm">
+                      {pdfDisplayName}
+                    </p>
+                    <p className="text-[11px] text-gray-500 font-medium flex items-center gap-1.5 mt-0.5">
+                      <span>เอกสารประกอบ</span>
+                      {pdfSizeFormatted && (
+                        <>
+                          <span>•</span>
+                          <span>{pdfSizeFormatted}</span>
+                        </>
+                      )}
+                      <span>•</span>
+                      <span className="text-emerald-700 font-semibold">ซิงก์คลาวด์แล้ว</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <a
+                    href={rawPdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download={pdfDisplayName}
+                    onClick={(e) => {
+                      if (onExternalLinkClick && !rawPdfUrl.startsWith('data:')) {
+                        e.preventDefault();
+                        onExternalLinkClick(rawPdfUrl);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+                    title="เปิดดูหรือดาวน์โหลดเอกสาร PDF"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>เปิดดู PDF</span>
+                  </a>
+                </div>
+              </div>
+            );
+          })()}
+
           {post.poll && Array.isArray(post.poll.options) && (
             <div className="mt-4 border border-gray-200 rounded-xl p-4">
               <div className="space-y-3">
@@ -513,7 +566,7 @@ export function PostItem({
               ) : (
                 <div className="text-center py-3 bg-gray-50 rounded-xl">
                   <p className="text-sm text-gray-500">
-                    กรุณาเข้าสู่ระบบผ่าน<a href="https://mtexam-passalldiwa.ai.studio/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline mx-1">เว็บไซต์หลัก</a>เพื่อแสดงความคิดเห็น
+                    กรุณาเข้าสู่ระบบผ่าน<a href={MAIN_SITE_URL} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline mx-1">เว็บไซต์หลัก</a>เพื่อแสดงความคิดเห็น
                   </p>
                 </div>
               )}

@@ -72,13 +72,14 @@ export async function syncPostToGoogleSheets(post: Post): Promise<boolean> {
     return true;
   }
 
-  const contentWithImage = post.image ? `${post.content}\n${post.image}` : post.content;
-
   const payload = {
     action: 'createPost',
+    postId: post.id,
     uid: (post.author as any)?.uid || post.author?.id || '#MED68001',
-    content: contentWithImage,
-    image: post.image || ''
+    content: post.content,
+    image: post.image || '',
+    pdf: post.pdf?.data || post.pdfUrl || post.pdf?.url || '',
+    pdfName: post.pdfName || post.pdf?.name || 'เอกสารแนบ.pdf'
   };
 
   try {
@@ -264,6 +265,8 @@ function mapSheetFeedToPosts(sheetRows: any[]): Post[] {
 
     let contentStr = typeof row.content === 'string' ? row.content : (row.content ? String(row.content) : '');
     let extractedImage = row.image || undefined;
+    let extractedPdfUrl = row.pdfUrl || row.pdf || row.pdfLink || undefined;
+    let extractedPdfName = row.pdfName || (extractedPdfUrl ? 'เอกสารประกอบการเรียน.pdf' : undefined);
     
     if (!extractedImage) {
       const imageMatch = contentStr.match(/(https?:\/\/[^\s]+(?:jpg|jpeg|png|gif|webp|unsplash\.com)[^\s]*)/i);
@@ -289,6 +292,9 @@ function mapSheetFeedToPosts(sheetRows: any[]): Post[] {
       },
       content: contentStr,
       image: extractedImage,
+      pdfUrl: extractedPdfUrl,
+      pdfName: extractedPdfName,
+      pdf: extractedPdfUrl ? { url: extractedPdfUrl, name: extractedPdfName || 'เอกสารแนบ.pdf' } : undefined,
       tags: typeof contentStr === 'string' ? (contentStr.match(/#[\w\u0E00-\u0E7F]+/g) || []) : [],
       createdAt: dateFormatted,
       createdAtMs: rawTime,

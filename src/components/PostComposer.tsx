@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { BarChart2, Hash, Ghost, Smile, X, AtSign, Link2 } from 'lucide-react';
+import { BarChart2, Hash, Ghost, Smile, X, AtSign, Link2, Image as ImageIcon, FileText } from 'lucide-react';
 import { PollOption, SessionUser } from '../types';
-import { maskUid } from '../utils/auth';
+import { maskUid, MAIN_SITE_URL } from '../utils/auth';
 
 export function PostComposer({ 
   onPost,
@@ -11,7 +11,13 @@ export function PostComposer({
   registeredUsers = [],
   onLoginClick
 }: { 
-  onPost: (content: string, isAnonymous: boolean, image?: string, poll?: { options: { id: string, text: string, votes: number }[], expiresAt: string, totalVotes: number }) => void;
+  onPost: (
+    content: string, 
+    isAnonymous: boolean, 
+    image?: string, 
+    poll?: { options: { id: string, text: string, votes: number }[], expiresAt: string, totalVotes: number },
+    pdf?: { data?: string; name?: string; size?: number; url?: string }
+  ) => void;
   user?: SessionUser | null;
   externalSharedText?: string | null;
   onClearExternalSharedText?: () => void;
@@ -25,9 +31,51 @@ export function PostComposer({
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkInputUrl, setLinkInputUrl] = useState('');
   const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
+  const [imageFileBase64, setImageFileBase64] = useState<string | null>(null);
+  const [pdfFileBase64, setPdfFileBase64] = useState<string | null>(null);
+  const [pdfFileName, setPdfFileName] = useState<string | null>(null);
+  const [pdfFileSize, setPdfFileSize] = useState<number | null>(null);
   
   const mentionMenuRef = useRef<HTMLDivElement>(null);
   const linkMenuRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImageFileBase64(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handlePdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+        alert('กรุณาเลือกไฟล์ PDF เท่านั้นครับ');
+        return;
+      }
+      setPdfFileName(file.name);
+      setPdfFileSize(file.size);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPdfFileBase64(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
 
   useEffect(() => {
     if (externalSharedText) {
@@ -70,13 +118,25 @@ export function PostComposer({
       };
     }
     
-    onPost(trimmedContent, isAnonymous, undefined, pollData);
+    onPost(
+      trimmedContent, 
+      isAnonymous, 
+      imageFileBase64 || undefined, 
+      pollData,
+      pdfFileBase64 ? { data: pdfFileBase64, name: pdfFileName || 'เอกสารแนบ.pdf', size: pdfFileSize || 0 } : undefined
+    );
     setContent('');
     setIsAnonymous(false);
     setShowPoll(false);
     setShowMentionMenu(false);
     setShowLinkInput(false);
     setPollOptions(['', '']);
+    setImageFileBase64(null);
+    setPdfFileBase64(null);
+    setPdfFileName(null);
+    setPdfFileSize(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (pdfInputRef.current) pdfInputRef.current.value = '';
   };
 
   const handleInsertMention = (username: string) => {
@@ -106,8 +166,8 @@ export function PostComposer({
           <h3 className="text-sm font-bold text-gray-800">กรุณาเข้าสู่ระบบผ่านเว็บไซต์หลัก</h3>
           <p className="text-xs text-gray-600 mt-1 leading-relaxed">
             คุณสามารถเข้าสู่ระบบและร่วมพูดคุยได้โดยผ่านเว็บไซต์ 
-            <a href="https://mtexam-passalldiwa.ai.studio/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline mx-1">
-              https://mtexam-passalldiwa.ai.studio/
+            <a href={MAIN_SITE_URL} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline mx-1 break-all">
+              {MAIN_SITE_URL}
             </a>
             เท่านั้น
           </p>
@@ -181,9 +241,89 @@ export function PostComposer({
               </div>
             )}
             
+            {imageFileBase64 && (
+              <div className="relative mt-3 mb-2 inline-block">
+                <img src={imageFileBase64} alt="Preview" className="max-h-48 rounded-lg object-cover border border-gray-200" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImageFileBase64(null);
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                  }}
+                  className="absolute -top-2 -right-2 p-1 bg-gray-800 text-white rounded-full hover:bg-gray-700"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+
+            {pdfFileBase64 && (
+              <div className="relative mt-3 mb-2 inline-flex items-center gap-3 bg-red-50/80 border border-red-200 rounded-xl p-3 pr-10 shadow-xs max-w-full">
+                <div className="w-10 h-10 rounded-lg bg-red-600 text-white flex flex-col items-center justify-center font-bold text-[10px] shadow-xs flex-shrink-0">
+                  <FileText className="w-5 h-5" />
+                  <span>PDF</span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-gray-900 truncate max-w-xs sm:max-w-md">
+                    {pdfFileName || 'เอกสารแนบ.pdf'}
+                  </p>
+                  <p className="text-[10px] text-gray-500 font-medium">
+                    {formatBytes(pdfFileSize || 0)} • พร้อมสำรองข้อมูลไปยังคลาวด์
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPdfFileBase64(null);
+                    setPdfFileName(null);
+                    setPdfFileSize(null);
+                    if (pdfInputRef.current) pdfInputRef.current.value = '';
+                  }}
+                  className="absolute top-2 right-2 p-1 text-gray-400 hover:text-red-600 hover:bg-red-100 rounded-full transition-colors"
+                  title="ยกเลิกแนบไฟล์ PDF"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+            
             {/* Action buttons and Post button */}
             <div className="mt-4 flex items-center justify-between pt-2 border-t border-gray-100 relative">
               <div className="flex space-x-1 sm:space-x-2 items-center flex-wrap gap-y-1">
+                {/* Image Upload */}
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  ref={fileInputRef} 
+                  onChange={handleImageUpload} 
+                  className="hidden" 
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center p-2 rounded-full text-red-600 hover:bg-red-50 transition-colors"
+                  title="แนบรูปภาพ"
+                >
+                  <ImageIcon className="h-5 w-5" />
+                </button>
+
+                {/* PDF Document Upload */}
+                <input 
+                  type="file" 
+                  accept="application/pdf,.pdf" 
+                  ref={pdfInputRef} 
+                  onChange={handlePdfUpload} 
+                  className="hidden" 
+                />
+                <button
+                  type="button"
+                  onClick={() => pdfInputRef.current?.click()}
+                  className="inline-flex items-center p-2 rounded-full text-red-600 hover:bg-red-50 transition-colors"
+                  title="แนบเอกสาร PDF (ชีตสรุป/ข้อสอบ)"
+                >
+                  <FileText className="h-5 w-5" />
+                </button>
+
                 <button 
                   type="button" 
                   onClick={() => setShowPoll(!showPoll)} 

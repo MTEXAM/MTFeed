@@ -51,7 +51,13 @@ export function Feed({
   onProfileClick?: (user: any) => void;
 }) {
 
-  const handlePost = (content: string, isAnonymous: boolean, image?: string, poll?: { options: { id: string, text: string, votes: number }[], expiresAt: string, totalVotes: number }) => {
+  const handlePost = (
+    content: string, 
+    isAnonymous: boolean, 
+    image?: string, 
+    poll?: { options: { id: string, text: string, votes: number }[], expiresAt: string, totalVotes: number },
+    pdf?: { data?: string; name?: string; size?: number; url?: string }
+  ) => {
     const authorUid = user?.uid || user?.id || user?.username || 'MED68001';
     const author = (isAnonymous || !user) 
       ? { ...MOCK_USERS.anon, uid: 'anon' }
@@ -79,6 +85,10 @@ export function Feed({
       author,
       content,
       image,
+      pdfUrl: pdf?.url || pdf?.data,
+      pdfName: pdf?.name,
+      pdfSize: pdf?.size,
+      pdf: pdf ? { url: pdf.url || pdf.data || '', name: pdf.name || 'เอกสารแนบ.pdf', size: pdf.size, data: pdf.data } : undefined,
       poll,
       tags: tagsFromContent,
       createdAt: formatRealTime(createdAtMs),

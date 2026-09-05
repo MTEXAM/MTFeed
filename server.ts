@@ -401,9 +401,12 @@ async function startServer() {
             method: 'POST',
             body: JSON.stringify({
               action: 'createPost',
+              postId: payload.postId || `post_${Date.now()}`,
               uid: payload.uid || '#MED68001',
               content: payload.content || '',
-              image: payload.image || ''
+              image: payload.image || '',
+              pdf: payload.pdf || '',
+              pdfName: payload.pdfName || ''
             })
           });
           const result = await resp.json().catch(() => ({}));

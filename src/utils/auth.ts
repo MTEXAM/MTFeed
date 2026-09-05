@@ -1,6 +1,9 @@
 import { SessionUser, AppNotification } from '../types';
 import { saveUserToFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore } from './firestoreService';
 
+export const MAIN_SITE_URL = 'https://ais-pre-xiftsicrt4entwmmp6uygm-114914192301.asia-southeast1.run.app/';
+export const MAIN_SITE_HOST = 'ais-pre-xiftsicrt4entwmmp6uygm-114914192301.asia-southeast1.run.app';
+
 // Deterministic 8-char hash generator from string
 export function generateHash8(str: string): string {
   let hash = 0;

@@ -2,7 +2,7 @@ import React from 'react';
 import { MOCK_CATEGORIES } from '../data';
 import * as Icons from 'lucide-react';
 import { SessionUser } from '../types';
-import { getBadgeStyle, formatUserBadge, maskUid } from '../utils/auth';
+import { getBadgeStyle, formatUserBadge, maskUid, MAIN_SITE_URL } from '../utils/auth';
 
 export function SidebarLeft({ 
   activeCategory, 
@@ -173,7 +173,7 @@ export function SidebarLeft({
               ฝึกทำข้อสอบวิชาชีพเทคนิคการแพทย์ ทำแบบทดสอบจำลองได้ที่นี่
             </p>
             <a 
-              href="https://mtexam-passalldiwa.ai.studio/" 
+              href={MAIN_SITE_URL} 
               target="_blank" 
               rel="noopener noreferrer"
               className="flex items-center justify-center w-full bg-white text-red-600 border border-red-200 py-2 px-4 rounded-xl text-xs font-bold hover:bg-red-50 hover:border-red-300 shadow-sm transition-all"

@@ -1,7 +1,7 @@
 import React from 'react';
 import { BookA, MessageSquare, Bell, Search, Settings, User, Shield, Award, Camera, Edit3, LogOut, RefreshCw, ShieldCheck, Activity, ShieldAlert, KeyRound } from 'lucide-react';
 import { SessionUser } from '../types';
-import { getBadgeStyle, formatUserBadge, maskUid } from '../utils/auth';
+import { getBadgeStyle, formatUserBadge, maskUid, MAIN_SITE_URL } from '../utils/auth';
 import { SystemHealthState } from '../utils/systemHealthService';
 
 export function Navbar({ 
@@ -40,7 +40,7 @@ export function Navbar({
   onOpenEmergencyAdmin?: () => void;
 }) {
   const handleExamClick = (e: React.MouseEvent) => {
-    const url = "https://mtexam-passalldiwa.ai.studio/";
+    const url = MAIN_SITE_URL;
     if (onExternalLinkClick) {
       e.preventDefault();
       onExternalLinkClick(url);
@@ -74,7 +74,7 @@ export function Navbar({
           </div>
           <div className="flex items-center space-x-2 sm:space-x-4">
             <a 
-              href="https://mtexam-passalldiwa.ai.studio/"
+              href={MAIN_SITE_URL}
               onClick={handleExamClick}
               className="inline-flex items-center px-3.5 py-1.5 sm:px-4 sm:py-2 border border-red-600 text-xs sm:text-sm font-semibold rounded-full text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-600 transition-colors"
               title="ไปยังเว็บคลังข้อสอบ MTExam"
@@ -290,7 +290,7 @@ export function Navbar({
                     <span>รหัสฉุกเฉิน</span>
                   </button>
                 )}
-                <a href="https://mtexam-passalldiwa.ai.studio/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-full text-red-600 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">
+                <a href={MAIN_SITE_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-full text-red-600 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">
                   <User className="w-4 h-4 mr-2" />
                   เข้าสู่ระบบ
                 </a>
