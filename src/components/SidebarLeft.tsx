@@ -69,6 +69,7 @@ export function SidebarLeft({
                 </div>
                 <div className="flex items-center space-x-1.5 mt-0.5">
                   <span className="text-[11px] text-gray-500 truncate">@{sanitizeUsername(currentUser.username, currentUser.uid, currentUser.isAdmin)}</span>
+                  <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.2 rounded font-mono">ID: {maskUid(currentUser.uid, currentUser)}</span>
                 </div>
               </div>
             </div>

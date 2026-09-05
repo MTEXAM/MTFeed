@@ -250,6 +250,24 @@ export function EditProfileModal({
               />
             </div>
 
+            {/* Unique UID / Security Code */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                รหัสประจำตัวผู้ใช้งาน (UID / Security Code)
+              </label>
+              <div className="relative">
+                <input 
+                  type="text" 
+                  disabled
+                  value={currentUser.uid || currentUser.id || 'MED68001'}
+                  className="block w-full px-3 py-2 bg-amber-50/70 border border-amber-200/80 rounded-xl text-xs font-mono font-bold text-amber-800 cursor-not-allowed select-all"
+                />
+              </div>
+              <p className="text-[11px] text-amber-700/80 mt-1">
+                * รหัสประจำตัว (UID) เฉพาะบุคคลของคุณ ใช้สำหรับระบุตัวตนและซิงค์ข้อมูลกับระบบคลาวด์อย่างปลอดภัย
+              </p>
+            </div>
+
 
 
 

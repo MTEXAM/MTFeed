@@ -284,8 +284,8 @@ export function sanitizeUsername(username: string | undefined | null, uid?: stri
 }
 
 export function maskUid(uid: string | undefined, currentUser?: { isAdmin?: boolean; uid?: string } | null): string {
-  // Never expose student IDs/raw codes anywhere on screen
-  return '';
+  if (!uid) return '';
+  return uid.replace(/^#/, '');
 }
 
 export function formatUserBadge(user?: { isAdmin?: boolean; userGroup?: string; academicYear?: string; badge?: string; username?: string; uid?: string; } | null): string {
