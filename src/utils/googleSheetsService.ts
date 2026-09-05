@@ -1,7 +1,11 @@
 import { SessionUser, Post } from '../types';
 import { systemHealthManager } from './systemHealthService';
+import { setExplicitAvatar } from './auth';
 
 export const GOOGLE_SHEETS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbz1ZrKFZIHSnhlc6BQd_WvmOdHGa8ENQ6CuIu-MbPdWtgAtVj4WuzUgF6xtbtmFuPoBmQ/exec';
+
+let lastProfileSyncKey = '';
+let lastProfileSyncTime = 0;
 
 /**
  * 1. Sync user profile to Google Sheets via server proxy / Apps Script
@@ -11,6 +15,16 @@ export async function syncProfileToGoogleSheets(user: Partial<SessionUser>): Pro
   if (!user) return false;
   const uid = user.uid || user.id;
   if (!uid) return false;
+
+  const syncKey = `${uid}_${user.name}_${user.username}_${user.avatar}`;
+  const now = Date.now();
+  // Deduplicate rapid calls within 5 seconds for the exact same user data
+  if (syncKey === lastProfileSyncKey && (now - lastProfileSyncTime < 5000)) {
+    console.log('[SHEETS SYNC] Deduplicating profile sync call (already sent within 5s)');
+    return true;
+  }
+  lastProfileSyncKey = syncKey;
+  lastProfileSyncTime = now;
 
   const payload = {
     action: 'updateProfile',
@@ -22,7 +36,7 @@ export async function syncProfileToGoogleSheets(user: Partial<SessionUser>): Pro
     replaceOld: true,
     deletePrevious: true,
     cleanOldFiles: true,
-    timestamp: Date.now()
+    timestamp: now
   };
 
   try {
@@ -392,13 +406,17 @@ export async function fetchProfileFromGoogleSheets(uid: string): Promise<Partial
       if (res.ok) {
         const json = await res.json();
         if (json.status === 'success' && json.data && json.data.displayName) {
+          const profileImg = json.data.profileImage || '';
           const profile: Partial<SessionUser> = {
             id: json.data.uid || candidateUid,
             uid: json.data.uid || candidateUid,
             username: (json.data.username || 'user').replace(/^@/, ''),
             name: json.data.displayName || json.data.username || 'User',
-            avatar: json.data.profileImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(json.data.username || 'user')}`
+            avatar: profileImg || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(json.data.username || 'user')}`
           };
+          if (profileImg && !profileImg.includes('api.dicebear.com')) {
+            setExplicitAvatar(profile.uid || candidateUid, profileImg);
+          }
           if (isAdmin) {
             profile.isAdmin = true;
             profile.badge = '👑 Admin';
@@ -418,13 +436,17 @@ export async function fetchProfileFromGoogleSheets(uid: string): Promise<Partial
       if (resDirect.ok) {
         const json = await resDirect.json();
         if (json.status === 'success' && json.data && json.data.displayName) {
+          const profileImg = json.data.profileImage || '';
           const profile: Partial<SessionUser> = {
             id: json.data.uid || candidateUid,
             uid: json.data.uid || candidateUid,
             username: (json.data.username || 'user').replace(/^@/, ''),
             name: json.data.displayName || json.data.username || 'User',
-            avatar: json.data.profileImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(json.data.username || 'user')}`
+            avatar: profileImg || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(json.data.username || 'user')}`
           };
+          if (profileImg && !profileImg.includes('api.dicebear.com')) {
+            setExplicitAvatar(profile.uid || candidateUid, profileImg);
+          }
           if (isAdmin) {
             profile.isAdmin = true;
             profile.badge = '👑 Admin';

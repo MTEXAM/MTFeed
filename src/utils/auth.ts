@@ -121,11 +121,16 @@ export function saveRegisteredUser(user: SessionUser): void {
     const key = user.uid || user.username || user.id;
     if (key) {
       const existing = registry[key];
+      const finalAvatar = user.avatar || existing?.avatar;
       registry[key] = {
         ...existing,
         ...user,
+        avatar: finalAvatar,
         name: user.name || existing?.name || user.username
       };
+      if (finalAvatar && !finalAvatar.includes('api.dicebear.com')) {
+        setExplicitAvatar(key, finalAvatar);
+      }
     }
     localStorage.setItem(REGISTRY_KEY, JSON.stringify(registry));
     if (mtFeedChannel) {
@@ -133,7 +138,7 @@ export function saveRegisteredUser(user: SessionUser): void {
     }
     // Async save to Cloud Firestore
     saveUserToFirestore(registry[key]);
-    // Async sync profile to Google Sheets immediately
+    // Async sync profile to Google Sheets immediately (deduplicated in googleSheetsService)
     if (registry[key]) {
       syncProfileToGoogleSheets(registry[key]).catch(err => console.warn('[SHEETS INSTANT SYNC ERROR]', err));
     }
@@ -480,14 +485,33 @@ export function resolveUserAccount(params: {
     isAdmin
   );
 
-  // Check if this UID has an explicitly set custom avatar
+  // Check if this UID or existing account has an explicitly set custom avatar
   const explicitAvatar = getExplicitAvatar(finalUid);
+  const existingAvatar = existingUser?.avatar;
 
-  const cleanAvatar = explicitAvatar || (params.avatar 
-    ? decodeURIComponent(params.avatar).trim() 
-    : (existingUser?.avatar || (isAdmin 
-        ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' 
-        : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(finalUsername)}&backgroundColor=cccccc`)));
+  const paramAvatarStr = params.avatar ? decodeURIComponent(params.avatar).trim() : '';
+  const isParamDicebear = !paramAvatarStr || paramAvatarStr.includes('api.dicebear.com');
+  const isExistingCustom = (existingAvatar && !existingAvatar.includes('api.dicebear.com')) || 
+                        (explicitAvatar && !explicitAvatar.includes('api.dicebear.com'));
+
+  let cleanAvatar = '';
+  if (explicitAvatar) {
+    cleanAvatar = explicitAvatar;
+  } else if (isExistingCustom) {
+    cleanAvatar = existingAvatar!;
+  } else if (paramAvatarStr) {
+    cleanAvatar = paramAvatarStr;
+  } else if (existingAvatar) {
+    cleanAvatar = existingAvatar;
+  } else {
+    cleanAvatar = isAdmin 
+      ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' 
+      : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(finalUsername)}&backgroundColor=cccccc`;
+  }
+
+  if (cleanAvatar && !cleanAvatar.includes('api.dicebear.com')) {
+    setExplicitAvatar(finalUid, cleanAvatar);
+  }
 
   const resolvedUser: SessionUser = {
     id: finalUid,
