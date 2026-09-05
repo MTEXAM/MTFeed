@@ -533,7 +533,7 @@ export default function App() {
       const sheetPosts = await fetchFeedFromGoogleSheets();
       if (sheetPosts && sheetPosts.length > 0) {
         setPosts(prevPosts => {
-          const merged = mergePostsLists(sheetPosts, prevPosts);
+          const merged = mergePostsLists(sheetPosts, prevPosts, user?.uid || user?.id);
           try {
             localStorage.setItem('mtfeed_posts', JSON.stringify(merged));
           } catch (e) {}
@@ -564,9 +564,9 @@ export default function App() {
                   regMap[key] = {
                     ...existing,
                     ...sp,
-                    name: sanitizeDisplayName(sp.name || existing.name, key, existing.isAdmin),
-                    username: sanitizeUsername(sp.username || existing.username, key, existing.isAdmin),
-                    avatar: hasCustomExistingAvatar && isDicebearAvatar ? existing.avatar : (sp.avatar || existing.avatar)
+                    name: sp.name || existing.name,
+                    username: sp.username || existing.username,
+                    avatar: sp.avatar || existing.avatar
                   };
                 }
               }

@@ -1,6 +1,6 @@
 import { SessionUser, Post } from '../types';
 import { systemHealthManager } from './systemHealthService';
-import { setExplicitAvatar } from './auth';
+import { setExplicitAvatar, getExplicitAvatar } from './auth';
 
 export const GOOGLE_SHEETS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbz1ZrKFZIHSnhlc6BQd_WvmOdHGa8ENQ6CuIu-MbPdWtgAtVj4WuzUgF6xtbtmFuPoBmQ/exec';
 
@@ -412,16 +412,21 @@ export async function fetchProfileFromGoogleSheets(uid: string): Promise<Partial
         const json = await res.json();
         if (json.status === 'success' && json.data && json.data.displayName) {
           const profileImg = json.data.profileImage || '';
+          const resolvedUsername = (json.data.username || 'user').replace(/^@/, '');
+          const resolvedName = json.data.displayName || resolvedUsername || 'User';
+          const resolvedAvatar = profileImg || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedUsername)}`;
+
+          if (profileImg && !profileImg.includes('api.dicebear.com')) {
+            setExplicitAvatar(candidateUid, profileImg);
+          }
+
           const profile: Partial<SessionUser> = {
             id: json.data.uid || candidateUid,
             uid: json.data.uid || candidateUid,
-            username: (json.data.username || 'user').replace(/^@/, ''),
-            name: json.data.displayName || json.data.username || 'User',
-            avatar: profileImg || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(json.data.username || 'user')}`
+            username: resolvedUsername,
+            name: resolvedName,
+            avatar: resolvedAvatar
           };
-          if (profileImg && !profileImg.includes('api.dicebear.com')) {
-            setExplicitAvatar(profile.uid || candidateUid, profileImg);
-          }
           if (isAdmin) {
             profile.isAdmin = true;
             profile.badge = '👑 Admin';
@@ -442,16 +447,21 @@ export async function fetchProfileFromGoogleSheets(uid: string): Promise<Partial
         const json = await resDirect.json();
         if (json.status === 'success' && json.data && json.data.displayName) {
           const profileImg = json.data.profileImage || '';
+          const resolvedUsername = (json.data.username || 'user').replace(/^@/, '');
+          const resolvedName = json.data.displayName || resolvedUsername || 'User';
+          const resolvedAvatar = profileImg || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedUsername)}`;
+
+          if (profileImg && !profileImg.includes('api.dicebear.com')) {
+            setExplicitAvatar(candidateUid, profileImg);
+          }
+
           const profile: Partial<SessionUser> = {
             id: json.data.uid || candidateUid,
             uid: json.data.uid || candidateUid,
-            username: (json.data.username || 'user').replace(/^@/, ''),
-            name: json.data.displayName || json.data.username || 'User',
-            avatar: profileImg || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(json.data.username || 'user')}`
+            username: resolvedUsername,
+            name: resolvedName,
+            avatar: resolvedAvatar
           };
-          if (profileImg && !profileImg.includes('api.dicebear.com')) {
-            setExplicitAvatar(profile.uid || candidateUid, profileImg);
-          }
           if (isAdmin) {
             profile.isAdmin = true;
             profile.badge = '👑 Admin';

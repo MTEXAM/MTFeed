@@ -355,7 +355,7 @@ export function markPostAsDeletedLocally(postId: string, content?: string, uid?:
   } catch (e) {}
 }
 
-export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): Post[] {
+export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[], currentUserId?: string): Post[] {
   const deletedIds = getDeletedPostIds();
   const deletedSigs = getDeletedPostSignatures();
 
@@ -379,21 +379,20 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
 
     const primaryAuthor = primary.author || {} as any;
     const secondaryAuthor = secondary.author || {} as any;
-    const isPrimaryPlaceholderName = !primaryAuthor.name || primaryAuthor.name === 'MED68001' || primaryAuthor.name === '#MED68001' || primaryAuthor.name === 'User';
-    const isPrimaryDicebear = !primaryAuthor.avatar || primaryAuthor.avatar.includes('api.dicebear.com');
-    const hasSecondaryCustomAvatar = secondaryAuthor.avatar && !secondaryAuthor.avatar.includes('api.dicebear.com');
 
     const mergedAuthor = {
       ...secondaryAuthor,
       ...primaryAuthor,
-      name: isPrimaryPlaceholderName ? (secondaryAuthor.name || 'Bank') : primaryAuthor.name,
-      username: (primaryAuthor.username && primaryAuthor.username !== 'MED68001' && primaryAuthor.username !== '👑Admin') ? primaryAuthor.username : (secondaryAuthor.username || 'bank'),
-      avatar: (isPrimaryDicebear && hasSecondaryCustomAvatar) ? secondaryAuthor.avatar : (primaryAuthor.avatar || secondaryAuthor.avatar)
+      name: primaryAuthor.name || secondaryAuthor.name || 'User',
+      username: primaryAuthor.username || secondaryAuthor.username || 'user',
+      avatar: primaryAuthor.avatar || secondaryAuthor.avatar
     };
 
     return {
-      ...primary,
+      ...secondary,
+      ...primary, // Incoming Google Sheets data takes absolute precedence
       author: mergedAuthor,
+      content: primary.content || secondary.content,
       image: primary.image || secondary.image,
       pdfUrl: primary.pdfUrl || secondary.pdfUrl,
       pdfName: primary.pdfName || secondary.pdfName,
@@ -437,11 +436,26 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
     }
   };
 
-  if (Array.isArray(incomingPosts)) {
+  if (Array.isArray(incomingPosts) && incomingPosts.length > 0) {
+    // Google Sheets is the primary source of truth
     incomingPosts.forEach(processPost);
-  }
 
-  if (Array.isArray(existingPosts)) {
+    // Only retain existing local posts if they were created by active user in the last 2 minutes (pending sync)
+    if (Array.isArray(existingPosts)) {
+      const now = Date.now();
+      existingPosts.forEach(p => {
+        if (!p) return;
+        const sig = getPostSignature(p);
+        const existsInSheet = map.has(p.id) || (sig && sigToIdMap.has(sig));
+        if (existsInSheet) {
+          processPost(p);
+        } else if (p.createdAtMs && (now - p.createdAtMs < 120000)) {
+          // Keep recently created local post waiting for sync
+          processPost(p);
+        }
+      });
+    }
+  } else if (Array.isArray(existingPosts)) {
     existingPosts.forEach(processPost);
   }
 

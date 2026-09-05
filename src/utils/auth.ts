@@ -96,7 +96,7 @@ export function getRegisteredUsers(): Record<string, SessionUser> {
     }
     const parsed: Record<string, SessionUser> = JSON.parse(raw);
     
-    // Security Sanitize: Ensure only MED68001 can ever be Admin
+    // Security Sanitize & Explicit Avatar Check
     for (const key in parsed) {
       const u = parsed[key];
       if (u) {
@@ -105,6 +105,10 @@ export function getRegisteredUsers(): Record<string, SessionUser> {
           u.isAdmin = false;
           u.badge = '';
           u.userGroup = '';
+        }
+        const explicit = getExplicitAvatar(u.uid || key);
+        if (explicit && !explicit.includes('api.dicebear.com')) {
+          u.avatar = explicit;
         }
       }
     }
