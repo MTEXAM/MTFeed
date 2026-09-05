@@ -27,12 +27,21 @@ export async function syncProfileToGoogleSheets(user: Partial<SessionUser>): Pro
   lastProfileSyncTime = now;
 
   const cleanUsername = user.username ? user.username.replace(/^@/, '') : '';
+  const explicitAvatar = getExplicitAvatar(uid, cleanUsername, 'MED68001');
+
+  let avatarToSend = user.avatar || '';
+  if ((!avatarToSend || avatarToSend.includes('api.dicebear.com')) && explicitAvatar && !explicitAvatar.includes('api.dicebear.com')) {
+    avatarToSend = explicitAvatar;
+  }
+
   const payload = {
     action: 'updateProfile',
     uid: uid,
     username: cleanUsername,
     displayName: user.name || user.username || 'User',
-    profileImage: user.avatar || '',
+    profileImage: avatarToSend,
+    avatar: avatarToSend,
+    image: avatarToSend,
     deleteOld: true,
     replaceOld: true,
     deletePrevious: true,
@@ -40,6 +49,8 @@ export async function syncProfileToGoogleSheets(user: Partial<SessionUser>): Pro
     deleteOldDriveFiles: true,
     deleteSameNameFiles: true,
     deleteSameName: true,
+    deleteOldImages: true,
+    deleteFilesByName: true,
     removeDuplicates: true,
     fileName: `profile_${uid || cleanUsername}`,
     userKey: uid || cleanUsername,
@@ -421,10 +432,18 @@ export async function fetchProfileFromGoogleSheets(uid: string): Promise<Partial
           const profileImg = json.data.profileImage || '';
           const resolvedUsername = (json.data.username || 'user').replace(/^@/, '');
           const resolvedName = json.data.displayName || resolvedUsername || 'User';
-          const resolvedAvatar = profileImg || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedUsername)}`;
+          const explicitSaved = getExplicitAvatar(candidateUid, json.data.uid, resolvedUsername);
+          
+          let resolvedAvatar = profileImg;
+          if ((!resolvedAvatar || resolvedAvatar.includes('api.dicebear.com')) && explicitSaved) {
+            resolvedAvatar = explicitSaved;
+          } else if (!resolvedAvatar) {
+            resolvedAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedUsername)}`;
+          }
 
-          if (profileImg && !profileImg.includes('api.dicebear.com')) {
-            setExplicitAvatar(candidateUid, profileImg);
+          if (resolvedAvatar && !resolvedAvatar.includes('api.dicebear.com')) {
+            setExplicitAvatar(candidateUid, resolvedAvatar);
+            setExplicitAvatar(resolvedUsername, resolvedAvatar);
           }
 
           const profile: Partial<SessionUser> = {
@@ -456,10 +475,18 @@ export async function fetchProfileFromGoogleSheets(uid: string): Promise<Partial
           const profileImg = json.data.profileImage || '';
           const resolvedUsername = (json.data.username || 'user').replace(/^@/, '');
           const resolvedName = json.data.displayName || resolvedUsername || 'User';
-          const resolvedAvatar = profileImg || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedUsername)}`;
+          const explicitSaved = getExplicitAvatar(candidateUid, json.data.uid, resolvedUsername);
+          
+          let resolvedAvatar = profileImg;
+          if ((!resolvedAvatar || resolvedAvatar.includes('api.dicebear.com')) && explicitSaved) {
+            resolvedAvatar = explicitSaved;
+          } else if (!resolvedAvatar) {
+            resolvedAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedUsername)}`;
+          }
 
-          if (profileImg && !profileImg.includes('api.dicebear.com')) {
-            setExplicitAvatar(candidateUid, profileImg);
+          if (resolvedAvatar && !resolvedAvatar.includes('api.dicebear.com')) {
+            setExplicitAvatar(candidateUid, resolvedAvatar);
+            setExplicitAvatar(resolvedUsername, resolvedAvatar);
           }
 
           const profile: Partial<SessionUser> = {

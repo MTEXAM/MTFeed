@@ -540,13 +540,16 @@ export default function App() {
                   const isPlaceholderName = !sp.name || sp.name === 'MED68001' || sp.name === '#MED68001' || sp.name === 'User';
                   const isDicebearAvatar = !sp.avatar || sp.avatar.includes('api.dicebear.com');
                   const hasCustomExistingAvatar = existing.avatar && (existing.avatar.startsWith('data:image/') || !existing.avatar.includes('api.dicebear.com'));
+                  const explicitSaved = getExplicitAvatar(sp.uid, sp.username, key, existing.uid, existing.username);
+
+                  const resolvedAvatar = explicitSaved || (hasCustomExistingAvatar && isDicebearAvatar ? existing.avatar : (sp.avatar || existing.avatar));
 
                   regMap[key] = {
                     ...existing,
                     ...sp,
-                    name: sp.name || existing.name,
+                    name: isPlaceholderName ? existing.name : (sp.name || existing.name),
                     username: sp.username || existing.username,
-                    avatar: sp.avatar || existing.avatar
+                    avatar: resolvedAvatar
                   };
                 }
               }

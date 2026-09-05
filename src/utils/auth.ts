@@ -345,37 +345,50 @@ export function isAdmin(user: any): boolean {
   return uid === 'MED68001' && Boolean(user.isAdmin || user.badge === '👑 Admin');
 }
 
-export function getExplicitAvatar(uid: string | undefined | null): string | null {
-  if (!uid) return null;
-  const cleanUid = uid.replace(/^[@#]/, '').toUpperCase();
-  try {
-    const saved = localStorage.getItem(`mtfeed_avatar_explicit_${cleanUid}`);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed && typeof parsed.avatar === 'string' && parsed.avatar.trim()) {
-        return parsed.avatar.trim();
-      }
+export function getExplicitAvatar(...identifiers: (string | undefined | null)[]): string | null {
+  for (const id of identifiers) {
+    if (!id) continue;
+    const raw = String(id).trim().replace(/^[@#]/, '');
+    if (!raw) continue;
+    const keys = [
+      `mtfeed_avatar_explicit_${raw.toUpperCase()}`,
+      `mtfeed_avatar_explicit_${raw.toLowerCase()}`,
+      `mtfeed_avatar_explicit_${raw}`
+    ];
+    for (const key of keys) {
+      try {
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed.avatar === 'string' && parsed.avatar.trim() && !parsed.avatar.includes('api.dicebear.com')) {
+            return parsed.avatar.trim();
+          }
+        }
+      } catch (e) {}
     }
-  } catch (e) {}
+  }
   return null;
 }
 
-export function setExplicitAvatar(uid: string | undefined | null, avatarUrlOrData: string): void {
-  if (!uid || !avatarUrlOrData) return;
-  const cleanUid = uid.replace(/^[@#]/, '').toUpperCase();
+export function setExplicitAvatar(identifier: string | undefined | null, avatarUrlOrData: string): void {
+  if (!identifier || !avatarUrlOrData) return;
+  if (avatarUrlOrData.includes('api.dicebear.com')) return; // Never save Dicebear as explicit custom avatar
+  const raw = String(identifier).trim().replace(/^[@#]/, '');
+  if (!raw) return;
+  const payload = JSON.stringify({ avatar: avatarUrlOrData, updatedAt: Date.now() });
   try {
-    localStorage.setItem(`mtfeed_avatar_explicit_${cleanUid}`, JSON.stringify({
-      avatar: avatarUrlOrData,
-      updatedAt: Date.now()
-    }));
+    localStorage.setItem(`mtfeed_avatar_explicit_${raw.toUpperCase()}`, payload);
+    localStorage.setItem(`mtfeed_avatar_explicit_${raw.toLowerCase()}`, payload);
   } catch (e) {}
 }
 
 export function clearExplicitAvatar(uid: string | undefined | null): void {
   if (!uid) return;
-  const cleanUid = uid.replace(/^[@#]/, '').toUpperCase();
+  const raw = String(uid).trim().replace(/^[@#]/, '');
+  if (!raw) return;
   try {
-    localStorage.removeItem(`mtfeed_avatar_explicit_${cleanUid}`);
+    localStorage.removeItem(`mtfeed_avatar_explicit_${raw.toUpperCase()}`);
+    localStorage.removeItem(`mtfeed_avatar_explicit_${raw.toLowerCase()}`);
   } catch (e) {}
 }
 
@@ -484,24 +497,24 @@ export function resolveUserAccount(params: {
     isAdmin
   );
 
-  // Check if this UID or existing account has an explicitly set custom avatar
-  const explicitAvatar = getExplicitAvatar(finalUid);
-  const existingAvatar = existingUser?.avatar;
+  // Check if this UID, username, or existing account has an explicitly set custom avatar
+  const explicitAvatar = getExplicitAvatar(finalUid, finalUsername, cleanUsername, isAdmin ? 'MED68001' : null);
+  const existingAvatar = (existingUser?.avatar && !existingUser.avatar.includes('api.dicebear.com')) ? existingUser.avatar : null;
 
   const paramAvatarStr = params.avatar ? decodeURIComponent(params.avatar).trim() : '';
-  const isParamDicebear = !paramAvatarStr || paramAvatarStr.includes('api.dicebear.com');
-  const isExistingCustom = (existingAvatar && !existingAvatar.includes('api.dicebear.com')) || 
-                        (explicitAvatar && !explicitAvatar.includes('api.dicebear.com'));
+  const isParamCustom = paramAvatarStr && !paramAvatarStr.includes('api.dicebear.com');
 
   let cleanAvatar = '';
-  if (explicitAvatar) {
-    cleanAvatar = explicitAvatar;
-  } else if (isExistingCustom) {
-    cleanAvatar = existingAvatar!;
-  } else if (paramAvatarStr) {
+  if (isParamCustom) {
     cleanAvatar = paramAvatarStr;
+  } else if (explicitAvatar) {
+    cleanAvatar = explicitAvatar;
   } else if (existingAvatar) {
     cleanAvatar = existingAvatar;
+  } else if (paramAvatarStr) {
+    cleanAvatar = paramAvatarStr;
+  } else if (existingUser?.avatar) {
+    cleanAvatar = existingUser.avatar;
   } else {
     cleanAvatar = isAdmin 
       ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' 
@@ -510,6 +523,8 @@ export function resolveUserAccount(params: {
 
   if (cleanAvatar && !cleanAvatar.includes('api.dicebear.com')) {
     setExplicitAvatar(finalUid, cleanAvatar);
+    setExplicitAvatar(finalUsername, cleanAvatar);
+    if (isAdmin) setExplicitAvatar('MED68001', cleanAvatar);
   }
 
   const resolvedUser: SessionUser = {
