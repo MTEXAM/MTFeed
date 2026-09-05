@@ -361,33 +361,28 @@ async function startServer() {
   app.post('/api/sheets/profile', async (req, res) => {
     try {
       const payload = req.body;
-      console.log('[SHEETS PROXY] Queuing profile sync to Google Sheets for UID:', payload.uid);
+      console.log('[SHEETS PROXY] Syncing profile to Google Sheets for UID:', payload.uid);
 
-      sqliteQueue.add(async () => {
-        try {
-          const resp = await fetch(GOOGLE_SHEETS_ENDPOINT, {
-            method: 'POST',
-            body: JSON.stringify({
-              action: 'updateProfile',
-              uid: payload.uid || payload.id,
-              displayName: payload.displayName || payload.name || 'User',
-              username: payload.username || '',
-              profileImage: payload.profileImage || payload.avatar || '',
-              deleteOld: true,
-              replaceOld: true,
-              deletePrevious: true,
-              cleanOldFiles: true,
-              timestamp: Date.now()
-            })
-          });
-          const result = await resp.json().catch(() => ({}));
-          console.log('[SHEETS PROXY SUCCESS] Profile synced to Google Sheets:', result);
-        } catch (e) {
-          console.error('[SHEETS PROXY ERROR] Failed to sync profile to Google Sheets:', e);
-        }
+      const resp = await fetch(GOOGLE_SHEETS_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'updateProfile',
+          uid: payload.uid || payload.id,
+          displayName: payload.displayName || payload.name || 'User',
+          username: payload.username || '',
+          profileImage: payload.profileImage || payload.avatar || '',
+          deleteOld: true,
+          replaceOld: true,
+          deletePrevious: true,
+          cleanOldFiles: true,
+          timestamp: Date.now()
+        })
       });
 
-      res.json({ success: true, queued: true, message: 'Profile queued for Google Sheets permanent backup' });
+      const result = await resp.json().catch(() => ({ status: 'success' }));
+      console.log('[SHEETS PROXY SUCCESS] Profile synced to Google Sheets:', result);
+      res.json({ success: true, result });
     } catch (err: any) {
       console.error('[SHEETS PROXY ERROR]', err);
       res.status(500).json({ error: err.message });

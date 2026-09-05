@@ -48,6 +48,11 @@ export async function syncProfileToGoogleSheets(user: Partial<SessionUser>): Pro
     });
     if (res.ok) {
       console.log('[SHEETS SYNC] Profile synced to Google Sheets via server proxy');
+      const data = await res.json().catch(() => ({}));
+      const driveUrl = data?.result?.imageUrl || data?.result?.profileImage || data?.result?.data?.profileImage;
+      if (driveUrl && typeof driveUrl === 'string' && driveUrl.startsWith('http')) {
+        setExplicitAvatar(uid, driveUrl);
+      }
       return true;
     }
   } catch (err) {
