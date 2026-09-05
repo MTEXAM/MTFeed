@@ -89,7 +89,43 @@ function getInitialUser(): SessionUser | null {
       }
     }
     
-    // C. Check storage for an existing session first (to persist current user)
+    // C. If credentials are provided in URL / pending params, process auto-login FIRST
+    if (hasCredentials) {
+      const displayNameParam = paramsObj['displayName'] || paramsObj['display_name'] || paramsObj['fullname'] || paramsObj['name'] || paramsObj['student_name'];
+      const avatarParam = paramsObj['avatar'] || paramsObj['picture'] || paramsObj['photo'] || paramsObj['img'] || paramsObj['avatar_url'];
+      const roleParam = paramsObj['role'] || paramsObj['isAdmin'] || paramsObj['is_admin'] || paramsObj['admin'];
+      const userGroupParam = paramsObj['userGroup'] || paramsObj['role_group'] || paramsObj['group'] || paramsObj['status'] || paramsObj['user_group'];
+      const academicYearParam = paramsObj['academicYear'] || paramsObj['academic_year'] || paramsObj['year'] || paramsObj['class_year'];
+      const facultyParam = paramsObj['faculty'] || paramsObj['fac'] || paramsObj['department'];
+      const universityParam = paramsObj['university'] || paramsObj['uni'] || paramsObj['u_name'] || paramsObj['institution'] || paramsObj['school'];
+
+      const autoUser = resolveUserAccount({
+        username: usernameParam || uidParam || 'user',
+        uidParam,
+        displayName: displayNameParam,
+        avatar: avatarParam,
+        role: roleParam,
+        userGroupParam,
+        academicYearParam,
+        facultyParam,
+        universityParam
+      });
+
+      // Save session
+      try {
+        sessionStorage.setItem('mtfeed_user', JSON.stringify(autoUser));
+        localStorage.setItem('mtfeed_user', JSON.stringify(autoUser));
+      } catch (e) {
+        console.error('Error saving auto user session:', e);
+      }
+
+      // Immediately sync profile to Google Sheets
+      syncProfileToGoogleSheets(autoUser).catch(err => console.warn('[SHEETS INSTANT AUTO SYNC ERROR]', err));
+
+      return autoUser;
+    }
+
+    // D. If no incoming credentials in URL, check storage for an existing session
     const upgradeIfAdmin = (parsed: any) => {
       const isMedAdmin = parsed.uid === 'MED68001' || parsed.uid === '#MED68001' || parsed.id === 'MED68001' || parsed.id === '#MED68001' || parsed.username === 'bank';
       if (isMedAdmin) {
@@ -117,59 +153,6 @@ function getInitialUser(): SessionUser | null {
       const upgraded = upgradeIfAdmin(parsed);
       sessionStorage.setItem('mtfeed_user', JSON.stringify(upgraded));
       return upgraded;
-    }
-
-    // D. If no session exists, attempt auto-login from credentials if from trusted referrer
-    if (hasCredentials) {
-      const referrer = document.referrer || '';
-      console.log('Debug - Referrer detected:', referrer);
-
-      const validReferrers = [
-        MAIN_SITE_HOST,
-        'mtexam-passalldiwa.ai.studio',
-        'mt-feed.vercel.app',
-        'localhost',
-        '127.0.0.1',
-        'ai.studio',
-        'run.app'
-      ];
-
-      // Security validation: Must have a referrer and it must match one of our whitelisted sources
-      const isFromValidSource = referrer && validReferrers.some(r => referrer.toLowerCase().includes(r.toLowerCase()));
-
-      if (isFromValidSource) {
-        const displayNameParam = paramsObj['displayName'] || paramsObj['display_name'] || paramsObj['fullname'] || paramsObj['name'];
-        const avatarParam = paramsObj['avatar'] || paramsObj['picture'] || paramsObj['photo'] || paramsObj['img'] || paramsObj['avatar_url'];
-        const roleParam = paramsObj['role'] || paramsObj['isAdmin'] || paramsObj['is_admin'] || paramsObj['admin'];
-        const userGroupParam = paramsObj['userGroup'] || paramsObj['role_group'] || paramsObj['group'] || paramsObj['status'] || paramsObj['user_group'];
-        const academicYearParam = paramsObj['academicYear'] || paramsObj['academic_year'] || paramsObj['year'] || paramsObj['class_year'];
-        const facultyParam = paramsObj['faculty'] || paramsObj['fac'] || paramsObj['department'];
-        const universityParam = paramsObj['university'] || paramsObj['uni'] || paramsObj['u_name'] || paramsObj['institution'] || paramsObj['school'];
-
-        const autoUser = resolveUserAccount({
-          username: usernameParam || uidParam || 'user',
-          uidParam,
-          displayName: displayNameParam,
-          avatar: avatarParam,
-          role: roleParam,
-          userGroupParam,
-          academicYearParam,
-          facultyParam,
-          universityParam
-        });
-
-        // Save session
-        try {
-          sessionStorage.setItem('mtfeed_user', JSON.stringify(autoUser));
-          localStorage.setItem('mtfeed_user', JSON.stringify(autoUser));
-        } catch (e) {
-          console.error('Error saving auto user session:', e);
-        }
-
-        return autoUser;
-      } else {
-        console.warn("Auto-login rejected: Untrusted origin or direct link copying.");
-      }
     }
   } catch (e) {
     console.error('Error parsing initial user:', e);

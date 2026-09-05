@@ -1,5 +1,6 @@
 import { SessionUser, AppNotification } from '../types';
 import { saveUserToFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore } from './firestoreService';
+import { syncProfileToGoogleSheets } from './googleSheetsService';
 
 export const MAIN_SITE_URL = 'https://ais-pre-xiftsicrt4entwmmp6uygm-114914192301.asia-southeast1.run.app/';
 export const MAIN_SITE_HOST = 'ais-pre-xiftsicrt4entwmmp6uygm-114914192301.asia-southeast1.run.app';
@@ -132,6 +133,10 @@ export function saveRegisteredUser(user: SessionUser): void {
     }
     // Async save to Cloud Firestore
     saveUserToFirestore(registry[key]);
+    // Async sync profile to Google Sheets immediately
+    if (registry[key]) {
+      syncProfileToGoogleSheets(registry[key]).catch(err => console.warn('[SHEETS INSTANT SYNC ERROR]', err));
+    }
   } catch (e) {
     console.error('Failed to save account to registry', e);
   }
@@ -238,10 +243,6 @@ export const ACADEMIC_YEARS = [
 ] as const;
 
 export function isSensitiveStudentCode(val: string | undefined | null): boolean {
-  if (!val || typeof val !== 'string') return false;
-  const clean = val.trim().replace(/^[@#]/, '');
-  if (/^MED\d+/i.test(clean)) return true;
-  if (/^[A-Za-z]{2,5}\d{4,}/i.test(clean)) return true;
   return false;
 }
 
@@ -251,17 +252,17 @@ export function sanitizeDisplayName(name: string | undefined | null, uid?: strin
   const isBankAdmin = cleanUid === 'MED68001' || cleanUid === 'BANK2026' || isAdminUser;
 
   if (isBankAdmin) {
-    if (!cleanName || isSensitiveStudentCode(cleanName) || cleanName === 'User' || cleanName === '👑 Admin') {
+    if (!cleanName || cleanName === 'User' || cleanName === 'ผู้ใช้งาน' || cleanName === '👑 Admin') {
       return 'Bank';
     }
     return cleanName;
   }
 
-  if (cleanName && !isSensitiveStudentCode(cleanName) && cleanName !== 'User' && cleanName !== 'undefined') {
+  if (cleanName && cleanName !== 'undefined' && cleanName !== 'null') {
     return cleanName;
   }
 
-  return 'ผู้ใช้งาน';
+  return uid ? `User_${uid.slice(-4)}` : 'ผู้ใช้งาน';
 }
 
 export function sanitizeUsername(username: string | undefined | null, uid?: string, isAdminUser?: boolean): string {
@@ -270,17 +271,17 @@ export function sanitizeUsername(username: string | undefined | null, uid?: stri
   const isBankAdmin = cleanUid === 'MED68001' || cleanUid === 'BANK2026' || isAdminUser;
 
   if (isBankAdmin) {
-    if (!clean || isSensitiveStudentCode(clean) || clean === '👑Admin' || clean.toLowerCase() === 'admin') {
+    if (!clean || clean === '👑Admin' || clean.toLowerCase() === 'admin') {
       return 'bank';
     }
     return clean.toLowerCase();
   }
 
-  if (clean && !isSensitiveStudentCode(clean) && clean !== 'user' && clean !== 'undefined') {
-    return clean;
+  if (clean && clean !== 'undefined' && clean !== 'null') {
+    return clean.toLowerCase();
   }
 
-  return 'user';
+  return uid ? `user_${uid.toLowerCase().slice(-4)}` : 'user';
 }
 
 export function maskUid(uid: string | undefined, currentUser?: { isAdmin?: boolean; uid?: string } | null): string {
@@ -456,14 +457,25 @@ export function resolveUserAccount(params: {
     uid: finalUid
   });
 
+  // Incoming displayName passed from main website URL takes precedence over stale fallback names
+  const incomingDisplayName = params.displayName && params.displayName.trim() && params.displayName.trim() !== 'ผู้ใช้งาน' && params.displayName.trim() !== 'User'
+    ? params.displayName.trim()
+    : undefined;
+
+  const rawDisplayName = incomingDisplayName || (existingUser?.name && existingUser.name !== 'ผู้ใช้งาน' && existingUser.name !== 'User' ? existingUser.name : (params.displayName || cleanUsername || finalUid));
+
   const cleanDisplayName = sanitizeDisplayName(
-    existingUser?.name || params.displayName,
+    rawDisplayName,
     finalUid,
     isAdmin
   );
 
+  const candidateUsername = (cleanUsername && cleanUsername !== 'user' && cleanUsername !== 'undefined')
+    ? cleanUsername
+    : (existingUser?.username || params.username || finalUid.toLowerCase());
+
   const finalUsername = sanitizeUsername(
-    cleanUsername || existingUser?.username,
+    candidateUsername,
     finalUid,
     isAdmin
   );
