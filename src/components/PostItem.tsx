@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, Repeat2, Heart, Bookmark, Share, Send, MoreHorizontal, Trash2, Flag, ExternalLink, FileText, Download, Eye } from 'lucide-react';
 import { Post } from '../types';
-import { isAdmin, getBadgeStyle, MAIN_SITE_URL } from '../utils/auth';
+import { isAdmin, getBadgeStyle, MAIN_SITE_URL, sanitizeDisplayName, sanitizeUsername } from '../utils/auth';
 import { formatRelativeOrRealTime, formatFullDateTime } from '../utils/timeUtils';
 
 export function PostItem({ 
@@ -51,10 +51,10 @@ export function PostItem({
 
   const currentUser = user as any;
   const isPostAdmin = isAdmin(post?.author);
-  const authorName = isPostAdmin ? '👑 Admin' : (post?.author?.name || post?.author?.username || 'ผู้ใช้งาน');
-  const authorUsername = isPostAdmin ? '👑Admin' : (post?.author?.username || '');
-  const authorAvatar = post?.author?.avatar || (isPostAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(authorUsername || 'user')}&backgroundColor=cccccc`);
   const authorId = post?.author?.id || (post?.author as any)?.uid || '';
+  const authorName = sanitizeDisplayName(post?.author?.name, authorId, isPostAdmin);
+  const authorUsername = sanitizeUsername(post?.author?.username, authorId, isPostAdmin);
+  const authorAvatar = post?.author?.avatar || (isPostAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(authorUsername || 'user')}&backgroundColor=cccccc`);
 
   const isOwner = Boolean(currentUser && (
     (currentUser.username && authorUsername && currentUser.username.replace(/^@/, '').toLowerCase() === authorUsername.replace(/^@/, '').toLowerCase()) ||
@@ -463,8 +463,9 @@ export function PostItem({
                 <div className="space-y-4 mb-4">
                   {post.comments.map((comment) => {
                     const isCAdmin = isAdmin(comment?.author);
-                    const cAuthorName = isCAdmin ? '👑 Admin' : (comment?.author?.name || comment?.author?.username || 'ผู้ใช้งาน');
-                    const cAuthorUsername = isCAdmin ? '👑Admin' : (comment?.author?.username || '');
+                    const cAuthorId = comment?.author?.id || (comment?.author as any)?.uid || '';
+                    const cAuthorName = sanitizeDisplayName(comment?.author?.name, cAuthorId, isCAdmin);
+                    const cAuthorUsername = sanitizeUsername(comment?.author?.username, cAuthorId, isCAdmin);
                     const cAuthorAvatar = comment?.author?.avatar || (isCAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cAuthorUsername || 'user')}&backgroundColor=cccccc`);
 
                     return (

@@ -41,7 +41,7 @@ export function EmergencyAdminModal({
           ...adminBase,
           uid: 'MED68001',
           username: 'bank',
-          name: adminBase?.name || 'bank',
+          name: adminBase?.name || 'Bank',
           isAdmin: true,
           userGroup: '👑 Admin',
           badge: '👑 Admin',

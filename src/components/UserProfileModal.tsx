@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { Post, User, SessionUser } from '../types';
 import { PostItem } from './PostItem';
-import { getBadgeStyle, formatUserBadge, maskUid } from '../utils/auth';
+import { getBadgeStyle, formatUserBadge, maskUid, sanitizeDisplayName, sanitizeUsername } from '../utils/auth';
 
 export function UserProfileModal({
   isOpen,
@@ -61,9 +61,9 @@ export function UserProfileModal({
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
   
-  const isTargetAdmin = targetUser?.isAdmin || targetUser?.badge === '👑 Admin';
-  const displayUsername = isTargetAdmin ? '👑Admin' : (targetUser?.username || '');
-  const displayName = isTargetAdmin ? '👑 Admin' : (targetUser?.name || targetUser?.username || '');
+  const isTargetAdmin = Boolean(targetUser?.isAdmin || targetUser?.badge === '👑 Admin' || (targetUser as any)?.uid === 'MED68001' || (targetUser as any)?.id === 'MED68001');
+  const displayUsername = sanitizeUsername(targetUser?.username, (targetUser as any)?.uid || (targetUser as any)?.id, isTargetAdmin);
+  const displayName = sanitizeDisplayName(targetUser?.name, (targetUser as any)?.uid || (targetUser as any)?.id, isTargetAdmin);
 
   const rawUsername = targetUser?.username || '';
   const targetUsername = rawUsername.replace(/^@/, '').toLowerCase();
@@ -283,10 +283,6 @@ export function UserProfileModal({
 
             <div className="flex items-center space-x-2 text-xs text-gray-500 flex-wrap">
               <span className="font-semibold text-gray-700">@{displayUsername}</span>
-              <span>•</span>
-              <span className="font-mono bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded border border-gray-200" title="รหัสประจำตัว (UID)">
-                UID: #{maskUid((targetUser as SessionUser).uid || (targetUser as any).id || '••••', currentUser)}
-              </span>
             </div>
 
 

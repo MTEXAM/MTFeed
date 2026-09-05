@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { X, Camera, Trash2, Check, RefreshCw, Sparkles, Shield, User, School, Building2, Upload, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { SessionUser } from '../types';
-import { USER_GROUPS, ACADEMIC_YEARS, maskUid, formatUserBadge, getBadgeStyle } from '../utils/auth';
+import { USER_GROUPS, ACADEMIC_YEARS, maskUid, formatUserBadge, getBadgeStyle, sanitizeDisplayName, sanitizeUsername } from '../utils/auth';
 
 export function EditProfileModal({
   isOpen,
@@ -16,7 +16,7 @@ export function EditProfileModal({
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [name, setName] = useState(currentUser?.name || currentUser?.username || '');
+  const [name, setName] = useState(sanitizeDisplayName(currentUser?.name, currentUser?.uid, currentUser?.isAdmin));
   const [avatar, setAvatar] = useState(currentUser?.avatar || '');
 
   const [isProcessingImage, setIsProcessingImage] = useState(false);
@@ -25,7 +25,7 @@ export function EditProfileModal({
   // Sync state if currentUser changes
   React.useEffect(() => {
     if (currentUser) {
-      setName(currentUser.name || currentUser.username || '');
+      setName(sanitizeDisplayName(currentUser.name, currentUser.uid, currentUser.isAdmin));
       setAvatar(currentUser.avatar || '');
     }
   }, [currentUser, isOpen]);
@@ -237,48 +237,17 @@ export function EditProfileModal({
               </div>
             </div>
 
-            {/* Username & UID (Fixed security badges) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                  ชื่อผู้ใช้ (Username)
-                </label>
-                <input 
-                  type="text" 
-                  disabled
-                  value={`@${currentUser.username}`}
-                  className="block w-full px-3 py-2 bg-gray-100 border border-gray-200 rounded-xl text-xs font-mono text-gray-600 cursor-not-allowed"
-                />
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    รหัสประจำตัว (UID)
-                  </label>
-                  <span className="text-[10px] text-amber-700 font-medium flex items-center">
-                    <ShieldAlert className="w-3 h-3 mr-0.5" />
-                    ห้ามเปิดเผย
-                  </span>
-                </div>
-                <div className="px-3 py-2 bg-amber-50/50 border border-amber-200/80 rounded-xl text-xs font-mono text-gray-800 flex items-center">
-                  <span className="truncate font-semibold">
-                    #{maskUid(currentUser.uid, currentUser)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* UID Security Warning Banner */}
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start space-x-2.5">
-              <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div className="text-xs text-amber-900 leading-relaxed">
-                <p className="font-bold text-amber-950 flex items-center">
-                  ⚠️ คำเตือนความปลอดภัย
-                </p>
-                <p className="mt-0.5 text-xs text-amber-900 font-normal">
-                  รหัสประจำตัว (UID) เป็นข้อมูลส่วนบุคคลเพื่อยืนยันสิทธิ์ระหว่าง MTExam และ MTFeed โปรดเก็บเป็นความลับ ห้ามเปิดเผยหรือส่งต่อให้ผู้อื่นเด็ดขาด
-                </p>
-              </div>
+            {/* Username */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                ชื่อผู้ใช้ (Username)
+              </label>
+              <input 
+                type="text" 
+                disabled
+                value={`@${sanitizeUsername(currentUser.username, currentUser.uid, currentUser.isAdmin)}`}
+                className="block w-full px-3 py-2 bg-gray-100 border border-gray-200 rounded-xl text-xs font-mono text-gray-600 cursor-not-allowed"
+              />
             </div>
 
 

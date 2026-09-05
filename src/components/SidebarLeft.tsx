@@ -2,7 +2,7 @@ import React from 'react';
 import { MOCK_CATEGORIES } from '../data';
 import * as Icons from 'lucide-react';
 import { SessionUser } from '../types';
-import { getBadgeStyle, formatUserBadge, maskUid, MAIN_SITE_URL } from '../utils/auth';
+import { getBadgeStyle, formatUserBadge, maskUid, MAIN_SITE_URL, sanitizeDisplayName, sanitizeUsername } from '../utils/auth';
 
 export function SidebarLeft({ 
   activeCategory, 
@@ -56,7 +56,7 @@ export function SidebarLeft({
                     className="text-xs font-bold text-gray-900 truncate hover:text-red-600 hover:underline cursor-pointer text-left"
                     title="คลิกเพื่อดูโปรไฟล์"
                   >
-                    {currentUser.name || currentUser.username}
+                    {sanitizeDisplayName(currentUser.name, currentUser.uid, currentUser.isAdmin)}
                   </button>
                   <button
                     onClick={onEditProfileClick}
@@ -68,10 +68,7 @@ export function SidebarLeft({
                   </button>
                 </div>
                 <div className="flex items-center space-x-1.5 mt-0.5">
-                  <span className="text-[11px] text-gray-500 truncate">@{currentUser.username}</span>
-                  <span className="text-[9px] font-mono bg-gray-100 text-gray-600 px-1 py-0.2 rounded border border-gray-200">
-                    #{maskUid(currentUser.uid, currentUser)}
-                  </span>
+                  <span className="text-[11px] text-gray-500 truncate">@{sanitizeUsername(currentUser.username, currentUser.uid, currentUser.isAdmin)}</span>
                 </div>
               </div>
             </div>
@@ -109,9 +106,8 @@ export function SidebarLeft({
             <div className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between text-[10px] text-gray-400">
               <span className="flex items-center">
                 <Icons.ShieldCheck className="w-3 h-3 mr-1 text-green-500" />
-                ซิงค์สถานะจาก MTExam
+                เชื่อมต่อระบบความปลอดภัย MTFeed
               </span>
-              <span className="font-mono text-[9px]">#{maskUid(currentUser.uid, currentUser)}</span>
             </div>
           </div>
         )}

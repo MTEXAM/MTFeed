@@ -128,15 +128,7 @@ export async function saveUserToFirestore(user: SessionUser): Promise<void> {
       }
     });
 
-    // 1. Google Sheets Tier 1 Master Permanent Backup (Instant Fire)
-    syncProfileToGoogleSheets(userData)
-      .then(() => systemHealthManager.reportSheetsSuccess())
-      .catch(err => {
-        console.warn('Google Sheets user sync failed:', err);
-        systemHealthManager.reportSheetsError();
-      });
-
-    // 2. SQLite Layer 2 Backup: Save User profile to local SQLite
+    // 1. SQLite Layer 2 Backup: Save User profile to local SQLite
     fetch('/api/backup/user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -145,7 +137,7 @@ export async function saveUserToFirestore(user: SessionUser): Promise<void> {
       .then(() => systemHealthManager.reportBackupSuccess())
       .catch(err => console.warn('SQLite user backup sync failed:', err));
 
-    // 3. Firestore Realtime Sync
+    // 2. Firestore Realtime Sync
     const userRef = doc(db, USERS_COLLECTION, docId);
     
     // Layer 6: Create Snapshot before update
@@ -385,8 +377,23 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[]): P
     const mergedBookmarkedBy = Array.from(new Set([...(primary.bookmarkedBy || []), ...(secondary.bookmarkedBy || [])]));
     const mergedRepostedBy = Array.from(new Set([...(primary.repostedBy || []), ...(secondary.repostedBy || [])]));
 
+    const primaryAuthor = primary.author || {} as any;
+    const secondaryAuthor = secondary.author || {} as any;
+    const isPrimaryPlaceholderName = !primaryAuthor.name || primaryAuthor.name === 'MED68001' || primaryAuthor.name === '#MED68001' || primaryAuthor.name === 'User';
+    const isPrimaryDicebear = !primaryAuthor.avatar || primaryAuthor.avatar.includes('api.dicebear.com');
+    const hasSecondaryCustomAvatar = secondaryAuthor.avatar && !secondaryAuthor.avatar.includes('api.dicebear.com');
+
+    const mergedAuthor = {
+      ...secondaryAuthor,
+      ...primaryAuthor,
+      name: isPrimaryPlaceholderName ? (secondaryAuthor.name || 'Bank') : primaryAuthor.name,
+      username: (primaryAuthor.username && primaryAuthor.username !== 'MED68001' && primaryAuthor.username !== '👑Admin') ? primaryAuthor.username : (secondaryAuthor.username || 'bank'),
+      avatar: (isPrimaryDicebear && hasSecondaryCustomAvatar) ? secondaryAuthor.avatar : (primaryAuthor.avatar || secondaryAuthor.avatar)
+    };
+
     return {
       ...primary,
+      author: mergedAuthor,
       image: primary.image || secondary.image,
       pdfUrl: primary.pdfUrl || secondary.pdfUrl,
       pdfName: primary.pdfName || secondary.pdfName,

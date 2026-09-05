@@ -6,6 +6,7 @@ import { Post, Comment, SessionUser } from '../types';
 import { deletePostFromFirestore, savePostToFirestore, markPostAsDeletedLocally, getPostSignature, mergePostsLists } from '../utils/firestoreService';
 import { syncPostToGoogleSheets, syncProfileToGoogleSheets } from '../utils/googleSheetsService';
 import { formatRealTime } from '../utils/timeUtils';
+import { sanitizeDisplayName, sanitizeUsername } from '../utils/auth';
 
 export function Feed({ 
   posts = [],
@@ -58,15 +59,18 @@ export function Feed({
     poll?: { options: { id: string, text: string, votes: number }[], expiresAt: string, totalVotes: number },
     pdf?: { data?: string; name?: string; size?: number; url?: string }
   ) => {
-    const authorUid = user?.uid || user?.id || user?.username || 'MED68001';
+    const authorUid = user?.uid || user?.id || 'admin';
+    const cleanAuthorName = sanitizeDisplayName(user?.name, user?.uid || user?.id, user?.isAdmin);
+    const cleanAuthorUsername = sanitizeUsername(user?.username, user?.uid || user?.id, user?.isAdmin);
+
     const author = (isAnonymous || !user) 
       ? { ...MOCK_USERS.anon, uid: 'anon' }
       : { 
           id: authorUid,
           uid: authorUid,
-          name: (user.isAdmin || user.badge === '👑 Admin') ? '👑 Admin' : (user.name || user.username), 
-          username: (user.isAdmin || user.badge === '👑 Admin') ? '👑Admin' : user.username, 
-          avatar: user.avatar || (user.isAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.username)}&backgroundColor=cccccc`),
+          name: cleanAuthorName, 
+          username: cleanAuthorUsername, 
+          avatar: user.avatar || (user.isAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanAuthorUsername)}&backgroundColor=cccccc`),
           badge: user.badge || (user.isAdmin ? '👑 Admin' : ''),
           userGroup: user.userGroup,
           academicYear: user.academicYear,
@@ -105,10 +109,6 @@ export function Feed({
     // Save to Firestore, SQLite, and Google Sheets
     savePostToFirestore(newPost).catch(e => console.error('Failed to save post:', e));
     syncPostToGoogleSheets(newPost).catch(e => console.error('Failed to sync to Google Sheets:', e));
-
-    if (user && !isAnonymous) {
-      syncProfileToGoogleSheets(user).catch(e => console.warn('Failed to sync user profile to Google Sheets:', e));
-    }
 
     // Extract @mentions and notify recipient
     const matches = content.match(/@([\w\u0E00-\u0E7F]+)/g);
@@ -183,11 +183,14 @@ export function Feed({
       return;
     }
 
+    const commentAuthorName = sanitizeDisplayName(user.name, user.uid || user.id, user.isAdmin);
+    const commentAuthorUsername = sanitizeUsername(user.username, user.uid || user.id, user.isAdmin);
+
     const author = { 
       id: user.uid || user.id || user.username, 
-      name: (user.isAdmin || user.badge === '👑 Admin') ? '👑 Admin' : (user.name || user.username), 
-      username: (user.isAdmin || user.badge === '👑 Admin') ? '👑Admin' : user.username, 
-      avatar: user.avatar || (user.isAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}&backgroundColor=cccccc`),
+      name: commentAuthorName, 
+      username: commentAuthorUsername, 
+      avatar: user.avatar || (user.isAdmin ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(commentAuthorUsername)}&backgroundColor=cccccc`),
       badge: user.badge || (user.isAdmin ? '👑 Admin' : ''),
       userGroup: user.userGroup,
       academicYear: user.academicYear,

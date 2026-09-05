@@ -1,7 +1,7 @@
 import React from 'react';
 import { BookA, MessageSquare, Bell, Search, Settings, User, Shield, Award, Camera, Edit3, LogOut, RefreshCw, ShieldCheck, Activity, ShieldAlert, KeyRound } from 'lucide-react';
 import { SessionUser } from '../types';
-import { getBadgeStyle, formatUserBadge, maskUid, MAIN_SITE_URL } from '../utils/auth';
+import { getBadgeStyle, formatUserBadge, maskUid, MAIN_SITE_URL, sanitizeDisplayName, sanitizeUsername } from '../utils/auth';
 import { SystemHealthState } from '../utils/systemHealthService';
 
 export function Navbar({ 
@@ -199,17 +199,10 @@ export function Navbar({
                           แก้ไข
                         </button>
                       </div>
-                      <p className="text-sm font-bold text-gray-900 truncate mt-0.5">{user.name || user.username}</p>
+                      <p className="text-sm font-bold text-gray-900 truncate mt-0.5">{sanitizeDisplayName(user.name, user.uid, user.isAdmin)}</p>
                       <div className="flex items-center space-x-2 mt-1">
-                        <span className="text-xs text-gray-500 truncate">@{user.username}</span>
-                        <span className="text-[10px] font-mono bg-red-50 text-red-700 border border-red-200 px-1.5 py-0.5 rounded font-semibold" title="รหัสความปลอดภัยประจำตัว (โปรดเก็บเป็นความลับ)">
-                          UID: #{maskUid(user.uid, user)}
-                        </span>
+                        <span className="text-xs text-gray-500 truncate">@{sanitizeUsername(user.username, user.uid, user.isAdmin)}</span>
                       </div>
-                      <p className="text-[10px] text-amber-700 font-medium mt-1 flex items-center">
-                        <Shield className="w-2.5 h-2.5 mr-1 text-amber-600" />
-                        โปรดเก็บ UID เป็นความลับเพื่อความปลอดภัย
-                      </p>
                       {badgeText && (
                         <div className="mt-2">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${badgeStyle.bg} ${badgeStyle.text} ${badgeStyle.border}`}>

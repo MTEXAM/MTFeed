@@ -40,7 +40,7 @@ export const DEFAULT_ACTIVE_USERS: Record<string, SessionUser> = {
   'MED68001': {
     uid: 'MED68001',
     username: 'bank',
-    name: 'bank',
+    name: 'Bank',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5',
     isAdmin: true,
     userGroup: '👑 Admin',
@@ -237,21 +237,55 @@ export const ACADEMIC_YEARS = [
   'ปี 5+ / จบแล้ว'
 ] as const;
 
+export function isSensitiveStudentCode(val: string | undefined | null): boolean {
+  if (!val || typeof val !== 'string') return false;
+  const clean = val.trim().replace(/^[@#]/, '');
+  if (/^MED\d+/i.test(clean)) return true;
+  if (/^[A-Za-z]{2,5}\d{4,}/i.test(clean)) return true;
+  return false;
+}
+
+export function sanitizeDisplayName(name: string | undefined | null, uid?: string, isAdminUser?: boolean): string {
+  const cleanName = (name || '').trim();
+  const cleanUid = (uid || '').replace(/^[@#]/, '').toUpperCase();
+  const isBankAdmin = cleanUid === 'MED68001' || cleanUid === 'BANK2026' || isAdminUser;
+
+  if (isBankAdmin) {
+    if (!cleanName || isSensitiveStudentCode(cleanName) || cleanName === 'User' || cleanName === '👑 Admin') {
+      return 'Bank';
+    }
+    return cleanName;
+  }
+
+  if (cleanName && !isSensitiveStudentCode(cleanName) && cleanName !== 'User' && cleanName !== 'undefined') {
+    return cleanName;
+  }
+
+  return 'ผู้ใช้งาน';
+}
+
+export function sanitizeUsername(username: string | undefined | null, uid?: string, isAdminUser?: boolean): string {
+  const clean = (username || '').replace(/^[@#]/, '').trim();
+  const cleanUid = (uid || '').replace(/^[@#]/, '').toUpperCase();
+  const isBankAdmin = cleanUid === 'MED68001' || cleanUid === 'BANK2026' || isAdminUser;
+
+  if (isBankAdmin) {
+    if (!clean || isSensitiveStudentCode(clean) || clean === '👑Admin' || clean.toLowerCase() === 'admin') {
+      return 'bank';
+    }
+    return clean.toLowerCase();
+  }
+
+  if (clean && !isSensitiveStudentCode(clean) && clean !== 'user' && clean !== 'undefined') {
+    return clean;
+  }
+
+  return 'user';
+}
+
 export function maskUid(uid: string | undefined, currentUser?: { isAdmin?: boolean; uid?: string } | null): string {
-  if (!uid) return '';
-  // If the viewer is an Admin, they can see anyone's UID
-  if (currentUser?.isAdmin) {
-    return uid;
-  }
-  // If the viewer is the user themselves (matching UID), they can see their own UID
-  if (currentUser && currentUser.uid === uid) {
-    return uid;
-  }
-  // Otherwise, mask the UID: keep first character, mask the middle, keep last character
-  if (uid.length >= 3) {
-    return uid[0] + '*'.repeat(uid.length - 2) + uid[uid.length - 1];
-  }
-  return '********';
+  // Never expose student IDs/raw codes anywhere on screen
+  return '';
 }
 
 export function formatUserBadge(user?: { isAdmin?: boolean; userGroup?: string; academicYear?: string; badge?: string; username?: string; uid?: string; } | null): string {
@@ -304,6 +338,40 @@ export function isAdmin(user: any): boolean {
   const isExplicitAdmin = Boolean(user.isAdmin || user.badge === '👑 Admin');
   const hasAdminId = ADMIN_UIDS.includes(user.id || user.uid);
   return isExplicitAdmin && hasAdminId;
+}
+
+export function getExplicitAvatar(uid: string | undefined | null): string | null {
+  if (!uid) return null;
+  const cleanUid = uid.replace(/^[@#]/, '').toUpperCase();
+  try {
+    const saved = localStorage.getItem(`mtfeed_avatar_explicit_${cleanUid}`);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed.avatar === 'string' && parsed.avatar.trim()) {
+        return parsed.avatar.trim();
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+export function setExplicitAvatar(uid: string | undefined | null, avatarUrlOrData: string): void {
+  if (!uid || !avatarUrlOrData) return;
+  const cleanUid = uid.replace(/^[@#]/, '').toUpperCase();
+  try {
+    localStorage.setItem(`mtfeed_avatar_explicit_${cleanUid}`, JSON.stringify({
+      avatar: avatarUrlOrData,
+      updatedAt: Date.now()
+    }));
+  } catch (e) {}
+}
+
+export function clearExplicitAvatar(uid: string | undefined | null): void {
+  if (!uid) return;
+  const cleanUid = uid.replace(/^[@#]/, '').toUpperCase();
+  try {
+    localStorage.removeItem(`mtfeed_avatar_explicit_${cleanUid}`);
+  } catch (e) {}
 }
 
 export function resolveUserAccount(params: {
@@ -388,21 +456,32 @@ export function resolveUserAccount(params: {
     uid: finalUid
   });
 
-  const cleanDisplayName = (existingUser?.name && existingUser.name !== cleanUsername)
-    ? existingUser.name
-    : (params.displayName ? decodeURIComponent(params.displayName).trim() : (existingUser?.name || (isAdmin ? 'Admin Bank' : cleanUsername)));
+  const cleanDisplayName = sanitizeDisplayName(
+    existingUser?.name || params.displayName,
+    finalUid,
+    isAdmin
+  );
 
-  const cleanAvatar = params.avatar 
+  const finalUsername = sanitizeUsername(
+    cleanUsername || existingUser?.username,
+    finalUid,
+    isAdmin
+  );
+
+  // Check if this UID has an explicitly set custom avatar
+  const explicitAvatar = getExplicitAvatar(finalUid);
+
+  const cleanAvatar = explicitAvatar || (params.avatar 
     ? decodeURIComponent(params.avatar).trim() 
     : (existingUser?.avatar || (isAdmin 
         ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=fca5a5' 
-        : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanUsername)}&backgroundColor=cccccc`));
+        : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(finalUsername)}&backgroundColor=cccccc`)));
 
   const resolvedUser: SessionUser = {
     id: finalUid,
     uid: finalUid,
-    username: isAdmin ? '👑Admin' : cleanUsername,
-    name: isAdmin ? '👑 Admin' : cleanDisplayName,
+    username: finalUsername,
+    name: cleanDisplayName,
     avatar: cleanAvatar,
     userGroup: userGroup || existingUser?.userGroup || (isAdmin ? '👑 Admin' : ''),
     academicYear: academicYear || existingUser?.academicYear || (isAdmin ? undefined : ''),
@@ -420,15 +499,14 @@ export function resolveUserAccount(params: {
 
 // Generate default notifications for user
 export function getInitialNotifications(user: SessionUser | null): AppNotification[] {
-  const uidStr = user ? maskUid(user.uid, user) : 'MT2026';
-  const nameStr = user ? (user.name || user.username) : 'เพื่อนๆ สมาชิก';
+  const nameStr = user ? (sanitizeDisplayName(user.name, user.uid, user.isAdmin)) : 'เพื่อนๆ สมาชิก';
 
   return [
     {
       id: 'notif_sys_1',
       type: 'system',
-      title: `ความปลอดภัย: เชื่อมต่อบัญชีรหัส 8 หลัก (UID: #${uidStr})`,
-      description: `ระบบล็อคบัญชีของคุณกับรหัสประจำตัว #${uidStr} ป้องกันชื่อซ้ำและเก็บข้อมูลโพสต์/บุ๊กมาร์กให้อัตโนมัติทุกครั้งที่เข้าใช้งาน`,
+      title: `ระบบความปลอดภัย: บัญชีของคุณได้รับการคุ้มครอง`,
+      description: `ระบบล็อคบัญชีและเก็บข้อมูลโพสต์/บุ๊กมาร์กให้อัตโนมัติทุกครั้งที่เข้าใช้งานอย่างปลอดภัย`,
       authorName: 'ระบบความปลอดภัย MTFeed',
       senderType: 'system',
       severity: 'info',

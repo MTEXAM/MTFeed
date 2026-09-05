@@ -5,7 +5,7 @@ export const GOOGLE_SHEETS_ENDPOINT = 'https://script.google.com/macros/s/AKfycb
 
 /**
  * 1. Sync user profile to Google Sheets via server proxy / Apps Script
- * Payload format: { action: 'updateProfile', uid, username, displayName, profileImage }
+ * Payload format: { action: 'updateProfile', uid, username, displayName, profileImage, deleteOld: true, replaceOld: true }
  */
 export async function syncProfileToGoogleSheets(user: Partial<SessionUser>): Promise<boolean> {
   if (!user) return false;
@@ -17,7 +17,12 @@ export async function syncProfileToGoogleSheets(user: Partial<SessionUser>): Pro
     uid: uid,
     username: user.username ? user.username.replace(/^@/, '') : '',
     displayName: user.name || user.username || 'User',
-    profileImage: user.avatar || ''
+    profileImage: user.avatar || '',
+    deleteOld: true,
+    replaceOld: true,
+    deletePrevious: true,
+    cleanOldFiles: true,
+    timestamp: Date.now()
   };
 
   try {
@@ -56,7 +61,7 @@ const syncedPostsSet = new Set<string>();
 
 /**
  * 2. Sync created tweet / post to Google Sheets via server proxy / Apps Script
- * Payload format: { action: 'createPost', uid, content }
+ * Note: profileImage is omitted or sent only as URL to prevent Apps Script from creating duplicate profile files in Drive for every post
  */
 export async function syncPostToGoogleSheets(post: Post): Promise<boolean> {
   if (!post || !post.content || !post.id) return false;
@@ -72,10 +77,19 @@ export async function syncPostToGoogleSheets(post: Post): Promise<boolean> {
     return true;
   }
 
+  const authorUid = (post.author as any)?.uid || post.author?.id || 'admin';
+  const authorName = post.author?.name || post.author?.username || 'Bank';
+  const authorUsername = (post.author?.username || '').replace(/^@/, '');
+  const authorAvatar = post.author?.avatar && post.author.avatar.startsWith('http') ? post.author.avatar : '';
+
   const payload = {
     action: 'createPost',
     postId: post.id,
-    uid: (post.author as any)?.uid || post.author?.id || '#MED68001',
+    uid: authorUid,
+    displayName: authorName,
+    username: authorUsername,
+    author: authorName,
+    profileImage: authorAvatar,
     content: post.content,
     image: post.image || '',
     pdf: post.pdf?.data || post.pdfUrl || post.pdf?.url || '',
@@ -253,10 +267,17 @@ function mapSheetFeedToPosts(sheetRows: any[]): Post[] {
       ? dateObj.toLocaleDateString('th-TH', { month: 'short', day: 'numeric' }) + ' • ' + dateObj.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
       : 'เมื่อสักครู่';
 
-    const displayName = row.displayName || row.author || 'User';
-    const username = (row.username || displayName).replace(/^@/, '').toLowerCase().replace(/\s+/g, '_');
+    const rawUid = row.uid || 'MED68001';
+    const uid = rawUid.replace(/^#/, '');
+    let displayName = row.displayName || row.author || '';
+    if (!displayName || displayName === 'MED68001' || displayName === '#MED68001') {
+      displayName = (uid === 'MED68001' || uid === 'BANK2026') ? 'Bank' : 'User';
+    }
+    let username = (row.username || displayName).replace(/^@/, '').toLowerCase().replace(/\s+/g, '_');
+    if (username === 'med68001' || username === 'admin') {
+      username = 'bank';
+    }
     const avatar = row.profileImage || row.authorImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(username)}`;
-    const uid = row.uid || '#MED68001';
     
     // Stable ID: prefer postId, or construct stable deterministic ID from timestamp/content
     const stableId = row.postId 
@@ -320,12 +341,18 @@ export function extractProfilesFromSheetPosts(sheetPosts: Post[]): SessionUser[]
         const uid = String(authorAny.uid || p.author.id);
         const key = uid.toLowerCase();
         if (!userMap.has(key)) {
+          const rawName = p.author.name || '';
+          const isPlaceholder = !rawName || rawName === 'MED68001' || rawName === '#MED68001' || rawName === 'User';
+          const resolvedName = isPlaceholder ? (uid.toUpperCase() === 'MED68001' ? 'Bank' : 'User') : rawName;
+          const resolvedUsername = (p.author.username || 'user').replace(/^@/, '');
+          const cleanUsername = (resolvedUsername.toLowerCase() === 'med68001' || resolvedUsername.toLowerCase() === 'admin') ? 'bank' : resolvedUsername;
+
           const profile: any = {
             id: uid,
             uid: uid,
-            username: (p.author.username || 'user').replace(/^@/, ''),
-            name: p.author.name || 'User',
-            avatar: p.author.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(p.author.username || 'user')}`,
+            username: cleanUsername,
+            name: resolvedName,
+            avatar: p.author.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanUsername)}`,
             updatedAt: p.createdAtMs || Date.now()
           };
           if (authorAny.isAdmin !== undefined) profile.isAdmin = authorAny.isAdmin;

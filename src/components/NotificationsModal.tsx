@@ -115,7 +115,7 @@ export function NotificationsModal({
                 )}
               </div>
               <p className="text-xs text-red-100 mt-0.5">
-                {user ? `อัปเดตกิจกรรมของ @${user.username} (UID: #${maskUid(user.uid, user)})` : 'ความเคลื่อนไหวและข่าวสารล่าสุด'}
+                {user ? `อัปเดตกิจกรรมและความเคลื่อนไหวล่าสุดของคุณ` : 'ความเคลื่อนไหวและข่าวสารล่าสุด'}
               </p>
             </div>
           </div>

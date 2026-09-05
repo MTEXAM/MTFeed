@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Circle, ShieldCheck, Sparkles, MessageSquare, Trash2, UserX, AlertTriangle, Check, Lock, RotateCcw } from 'lucide-react';
 import { SessionUser } from '../types';
-import { getBadgeStyle, formatUserBadge, maskUid } from '../utils/auth';
+import { getBadgeStyle, formatUserBadge, maskUid, sanitizeDisplayName, sanitizeUsername } from '../utils/auth';
 
 export function OnlineMembersModal({
   isOpen,
@@ -195,10 +195,10 @@ export function OnlineMembersModal({
               </div>
               <div className="flex-1">
                 <p className="text-sm font-bold text-red-900">
-                  ยืนยันการลบบัญชี @{confirmDeleteUser.username}?
+                  ยืนยันการลบบัญชี @{sanitizeUsername(confirmDeleteUser.username, confirmDeleteUser.uid, confirmDeleteUser.isAdmin)}?
                 </p>
                 <p className="text-xs text-red-700 mt-1">
-                  ชื่อ: {confirmDeleteUser.name || confirmDeleteUser.username} • UID: #{maskUid(confirmDeleteUser.uid, currentUser)}
+                  ชื่อ: {sanitizeDisplayName(confirmDeleteUser.name, confirmDeleteUser.uid, confirmDeleteUser.isAdmin)}
                 </p>
                 <div className="mt-3 flex space-x-2">
                   <button
@@ -299,7 +299,7 @@ export function OnlineMembersModal({
                     <div className="min-w-0">
                       <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
                         <p className="text-sm font-bold text-gray-900 truncate group-hover:text-red-600 group-hover:underline transition-colors">
-                          {member.name || member.username}
+                          {sanitizeDisplayName(member.name, member.uid, member.isAdmin)}
                         </p>
                         {isSelf && (
                           <span className="text-[10px] bg-red-100 text-red-700 font-bold px-1.5 py-0.5 rounded-md">
@@ -314,11 +314,8 @@ export function OnlineMembersModal({
                       </div>
                       <div className="flex items-center space-x-2 mt-0.5 flex-wrap gap-y-0.5 text-xs text-gray-500">
                         {!(member.isAdmin || member.badge === '👑 Admin' || badgeText === '👑 Admin') && (
-                          <span className="truncate">@{member.username}</span>
+                          <span className="truncate">@{sanitizeUsername(member.username, member.uid, member.isAdmin)}</span>
                         )}
-                        <span className="text-[10px] font-mono bg-gray-100 text-gray-600 px-1.5 py-0.2 rounded border border-gray-200">
-                          UID: #{maskUid(member.uid, currentUser)}
-                        </span>
                       </div>
                     </div>
                   </div>

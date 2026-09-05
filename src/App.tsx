@@ -18,7 +18,7 @@ import { EmergencyAdminModal } from './components/EmergencyAdminModal';
 import { SystemToastContainer, ToastItem } from './components/SystemToast';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post, User } from './types';
-import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid, formatUserBadge, DEFAULT_ACTIVE_USERS, MAIN_SITE_URL, MAIN_SITE_HOST } from './utils/auth';
+import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid, formatUserBadge, DEFAULT_ACTIVE_USERS, MAIN_SITE_URL, MAIN_SITE_HOST, sanitizeDisplayName, sanitizeUsername } from './utils/auth';
 import { subscribeToPosts, subscribeToUsers, subscribeToSystemNotifications, sendSystemBroadcastToFirestore, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, getPostSignature, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore, syncPostsToFirestore, getUserFromFirestore, getBackupPostsFromSQLite, getBackupUsersFromSQLite, restoreBackupsToFirestore } from './utils/firestoreService';
 import { fetchFeedFromGoogleSheets, fetchProfileFromGoogleSheets, syncProfileToGoogleSheets, syncPostToGoogleSheets, extractProfilesFromSheetPosts } from './utils/googleSheetsService';
 import { systemHealthManager, SystemHealthState } from './utils/systemHealthService';
@@ -91,13 +91,17 @@ function getInitialUser(): SessionUser | null {
     
     // C. Check storage for an existing session first (to persist current user)
     const upgradeIfAdmin = (parsed: any) => {
-      const isMedAdmin = parsed.uid === 'MED68001' || parsed.uid === '#MED68001' || parsed.id === 'MED68001' || parsed.id === '#MED68001';
-      if (isMedAdmin && !parsed.isAdmin) {
+      const isMedAdmin = parsed.uid === 'MED68001' || parsed.uid === '#MED68001' || parsed.id === 'MED68001' || parsed.id === '#MED68001' || parsed.username === 'bank';
+      if (isMedAdmin) {
         parsed.isAdmin = true;
         parsed.badge = '👑 Admin';
         parsed.userGroup = '👑 Admin';
-        parsed.username = '👑Admin';
-        parsed.name = '👑 Admin';
+        if (!parsed.name || parsed.name === 'MED68001' || parsed.name === '#MED68001' || parsed.name === '👑 Admin') {
+          parsed.name = 'Bank';
+        }
+        if (!parsed.username || parsed.username === 'MED68001' || parsed.username === '👑Admin') {
+          parsed.username = 'bank';
+        }
         if (typeof localStorage !== 'undefined') localStorage.setItem('mtfeed_user', JSON.stringify(parsed));
       }
       return parsed;
@@ -566,8 +570,21 @@ export default function App() {
               const key = (sp.uid || sp.username || sp.id || '').toLowerCase();
               if (key) {
                 const existing = regMap[key];
-                if (!existing || (sp.updatedAt || 0) >= (existing.updatedAt || 0) || sp.name !== existing.name || sp.avatar !== existing.avatar) {
-                  regMap[key] = { ...(existing || {}), ...sp };
+                if (!existing) {
+                  regMap[key] = sp;
+                } else {
+                  // Only update if sheet profile has real data, not placeholder
+                  const isPlaceholderName = !sp.name || sp.name === 'MED68001' || sp.name === '#MED68001' || sp.name === 'User';
+                  const isDicebearAvatar = !sp.avatar || sp.avatar.includes('api.dicebear.com');
+                  const hasCustomExistingAvatar = existing.avatar && (existing.avatar.startsWith('data:image/') || !existing.avatar.includes('api.dicebear.com'));
+
+                  regMap[key] = {
+                    ...existing,
+                    ...sp,
+                    name: sanitizeDisplayName(sp.name || existing.name, key, existing.isAdmin),
+                    username: sanitizeUsername(sp.username || existing.username, key, existing.isAdmin),
+                    avatar: hasCustomExistingAvatar && isDicebearAvatar ? existing.avatar : (sp.avatar || existing.avatar)
+                  };
                 }
               }
             });
@@ -586,9 +603,22 @@ export default function App() {
         if (sheetProfile) {
           setUser(prev => {
             if (!prev) return prev;
-            if (prev.name !== sheetProfile.name || prev.avatar !== sheetProfile.avatar || prev.username !== sheetProfile.username) {
-              console.log('[GOOGLE SHEETS SYNC] User profile updated from Sheet:', sheetProfile.name);
-              const updated = { ...prev, ...sheetProfile, name: sheetProfile.name || prev.name, avatar: sheetProfile.avatar || prev.avatar };
+            const isSheetDicebear = !sheetProfile.avatar || sheetProfile.avatar.includes('api.dicebear.com');
+            const hasCustomLocalAvatar = prev.avatar && (prev.avatar.startsWith('data:image/') || !prev.avatar.includes('api.dicebear.com'));
+
+            const resolvedName = sanitizeDisplayName(sheetProfile.name || prev.name, prev.uid || prev.id, prev.isAdmin);
+            const resolvedAvatar = hasCustomLocalAvatar && isSheetDicebear ? prev.avatar : (sheetProfile.avatar || prev.avatar);
+            const resolvedUsername = sanitizeUsername(sheetProfile.username || prev.username, prev.uid || prev.id, prev.isAdmin);
+
+            if (prev.name !== resolvedName || prev.avatar !== resolvedAvatar || prev.username !== resolvedUsername) {
+              console.log('[GOOGLE SHEETS SYNC] User profile updated cleanly:', resolvedName);
+              const updated = { 
+                ...prev, 
+                ...sheetProfile, 
+                name: resolvedName, 
+                avatar: resolvedAvatar,
+                username: resolvedUsername
+              };
               try {
                 localStorage.setItem('mtfeed_user', JSON.stringify(updated));
                 sessionStorage.setItem('mtfeed_user', JSON.stringify(updated));

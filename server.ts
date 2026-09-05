@@ -372,7 +372,12 @@ async function startServer() {
               uid: payload.uid || payload.id,
               displayName: payload.displayName || payload.name || 'User',
               username: payload.username || '',
-              profileImage: payload.profileImage || payload.avatar || ''
+              profileImage: payload.profileImage || payload.avatar || '',
+              deleteOld: true,
+              replaceOld: true,
+              deletePrevious: true,
+              cleanOldFiles: true,
+              timestamp: Date.now()
             })
           });
           const result = await resp.json().catch(() => ({}));
@@ -397,12 +402,21 @@ async function startServer() {
 
       sqliteQueue.add(async () => {
         try {
+          // Do not send heavy base64 profileImage in createPost to prevent Apps Script from creating duplicate Drive files for every post
+          const avatarUrl = (typeof payload.profileImage === 'string' && payload.profileImage.startsWith('http')) 
+            ? payload.profileImage 
+            : '';
+
           const resp = await fetch(GOOGLE_SHEETS_ENDPOINT, {
             method: 'POST',
             body: JSON.stringify({
               action: 'createPost',
               postId: payload.postId || `post_${Date.now()}`,
-              uid: payload.uid || '#MED68001',
+              uid: payload.uid || 'admin',
+              displayName: payload.displayName || payload.author || payload.name || 'Bank',
+              username: payload.username || 'bank',
+              author: payload.displayName || payload.author || payload.name || 'Bank',
+              profileImage: avatarUrl,
               content: payload.content || '',
               image: payload.image || '',
               pdf: payload.pdf || '',

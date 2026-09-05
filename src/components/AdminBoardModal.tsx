@@ -347,7 +347,7 @@ export function AdminBoardModal({
                         <span className="text-sm">👑</span>
                         <div>
                           <p className="leading-tight">แอดมิน (Admin)</p>
-                          <p className="text-[10px] text-gray-500 font-normal">#MED68001</p>
+                          <p className="text-[10px] text-gray-500 font-normal">@admin</p>
                         </div>
                       </button>
 
