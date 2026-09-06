@@ -567,40 +567,44 @@ export default function App() {
         }
       }
 
-      // Check current user profile from Google Sheets
+      // Check current user profile from Google Sheets (only if not recently edited locally)
       if (user && (user.uid || user.id)) {
-        const sheetProfile = await fetchProfileFromGoogleSheets(user.uid || user.id || '');
-        if (sheetProfile) {
-          setUser(prev => {
-            if (!prev) return prev;
-            const isSheetDicebear = !sheetProfile.avatar || sheetProfile.avatar.includes('api.dicebear.com');
-            const hasCustomLocalAvatar = prev.avatar && (prev.avatar.startsWith('data:image/') || !prev.avatar.includes('api.dicebear.com'));
+        const isLocalRecent = user.updatedAt && (Date.now() - user.updatedAt < 600000);
+        if (!isLocalRecent) {
+          const sheetProfile = await fetchProfileFromGoogleSheets(user.uid || user.id || '');
+          if (sheetProfile) {
+            setUser(prev => {
+              if (!prev) return prev;
+              if (prev.updatedAt && (Date.now() - prev.updatedAt < 600000)) return prev;
+              const isSheetDicebear = !sheetProfile.avatar || sheetProfile.avatar.includes('api.dicebear.com');
+              const hasCustomLocalAvatar = prev.avatar && (prev.avatar.startsWith('data:image/') || !prev.avatar.includes('api.dicebear.com'));
 
-            const resolvedName = sanitizeDisplayName(sheetProfile.name || prev.name, prev.uid || prev.id, prev.isAdmin);
-            const resolvedAvatar = hasCustomLocalAvatar && isSheetDicebear ? prev.avatar : (sheetProfile.avatar || prev.avatar);
-            const resolvedUsername = sanitizeUsername(sheetProfile.username || prev.username, prev.uid || prev.id, prev.isAdmin);
+              const resolvedName = sanitizeDisplayName(sheetProfile.name || prev.name, prev.uid || prev.id, prev.isAdmin);
+              const resolvedAvatar = hasCustomLocalAvatar && isSheetDicebear ? prev.avatar : (sheetProfile.avatar || prev.avatar);
+              const resolvedUsername = sanitizeUsername(sheetProfile.username || prev.username, prev.uid || prev.id, prev.isAdmin);
 
-            if (resolvedAvatar && !resolvedAvatar.includes('api.dicebear.com')) {
-              setExplicitAvatar(prev.uid || prev.id, resolvedAvatar);
-            }
+              if (resolvedAvatar && !resolvedAvatar.includes('api.dicebear.com')) {
+                setExplicitAvatar(prev.uid || prev.id, resolvedAvatar);
+              }
 
-            if (prev.name !== resolvedName || prev.avatar !== resolvedAvatar || prev.username !== resolvedUsername) {
-              console.log('[GOOGLE SHEETS SYNC] User profile updated cleanly:', resolvedName);
-              const updated = { 
-                ...prev, 
-                ...sheetProfile, 
-                name: resolvedName, 
-                avatar: resolvedAvatar,
-                username: resolvedUsername
-              };
-              try {
-                localStorage.setItem('mtfeed_user', JSON.stringify(updated));
-                sessionStorage.setItem('mtfeed_user', JSON.stringify(updated));
-              } catch (e) {}
-              return updated;
-            }
-            return prev;
-          });
+              if (prev.name !== resolvedName || prev.avatar !== resolvedAvatar || prev.username !== resolvedUsername) {
+                console.log('[GOOGLE SHEETS SYNC] User profile updated cleanly:', resolvedName);
+                const updated = { 
+                  ...prev, 
+                  ...sheetProfile, 
+                  name: resolvedName, 
+                  avatar: resolvedAvatar,
+                  username: resolvedUsername
+                };
+                try {
+                  localStorage.setItem('mtfeed_user', JSON.stringify(updated));
+                  sessionStorage.setItem('mtfeed_user', JSON.stringify(updated));
+                } catch (e) {}
+                return updated;
+              }
+              return prev;
+            });
+          }
         }
       }
     } catch (err) {
@@ -666,13 +670,25 @@ export default function App() {
         console.warn('Could not load backup from Google Sheets:', err);
       }
 
-      // Check current user profile from Google Sheets
+      // Check current user profile from Google Sheets (skip if locally updated recently)
       if (user && (user.uid || user.id)) {
         try {
-          const sheetProfile = await fetchProfileFromGoogleSheets(user.uid || user.id || '');
-          if (sheetProfile) {
-            console.log('[GOOGLE SHEETS RESTORE] Found user profile in Google Sheets:', sheetProfile.name);
-            setUser(prev => prev ? { ...prev, ...sheetProfile, name: sheetProfile.name || prev.name, avatar: sheetProfile.avatar || prev.avatar } : prev);
+          const isLocalRecent = user.updatedAt && (Date.now() - user.updatedAt < 600000);
+          if (!isLocalRecent) {
+            const sheetProfile = await fetchProfileFromGoogleSheets(user.uid || user.id || '');
+            if (sheetProfile && sheetProfile.name) {
+              console.log('[GOOGLE SHEETS RESTORE] Found user profile in Google Sheets:', sheetProfile.name);
+              setUser(prev => {
+                if (!prev) return prev;
+                if (prev.updatedAt && (Date.now() - prev.updatedAt < 600000)) return prev;
+                return {
+                  ...prev,
+                  ...sheetProfile,
+                  name: sheetProfile.name || prev.name,
+                  avatar: (sheetProfile.avatar && !sheetProfile.avatar.includes('api.dicebear.com')) ? sheetProfile.avatar : prev.avatar
+                };
+              });
+            }
           }
         } catch (err) {
           console.warn('Could not load profile from Google Sheets:', err);
@@ -940,6 +956,40 @@ export default function App() {
     setUser(updatedUser);
     saveRegisteredUser(updatedUser);
     saveUserToFirestore(updatedUser);
+    try {
+      localStorage.setItem('mtfeed_user', JSON.stringify(updatedUser));
+      sessionStorage.setItem('mtfeed_user', JSON.stringify(updatedUser));
+    } catch (e) {}
+
+    // Update post author name and avatar IMMEDIATELY in local feed without waiting for async sync
+    setPosts(prevPosts => {
+      const updated = prevPosts.map(p => {
+        if (!p || !p.author) return p;
+        const pAuthorUName = (p.author.username || '').replace(/^@/, '').toLowerCase();
+        const userUName = (updatedUser.username || '').replace(/^@/, '').toLowerCase();
+        const isAuthor = Boolean(
+          (pAuthorUName && userUName && pAuthorUName === userUName) ||
+          (p.author.id && updatedUser.uid && p.author.id === updatedUser.uid) ||
+          (p.author.id && updatedUser.id && p.author.id === updatedUser.id)
+        );
+        if (isAuthor) {
+          return {
+            ...p,
+            author: {
+              ...p.author,
+              name: updatedUser.name || p.author.name,
+              avatar: updatedUser.avatar || p.author.avatar
+            }
+          };
+        }
+        return p;
+      });
+      try {
+        localStorage.setItem('mtfeed_posts', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+    setRegisteredUsers(getAllRegisteredUsersList());
     
     // Explicit user action: sync profile to Google Sheets/Drive ONCE with isExplicitSave: true and oldAvatar for Drive deletion
     syncProfileToGoogleSheets(updatedUser, { oldAvatar, isExplicitSave: true }).then((res) => {
@@ -973,14 +1023,14 @@ export default function App() {
           const updated = prevPosts.map(p => {
             if (!p || !p.author) return p;
             const pAuthorUName = (p.author.username || '').replace(/^@/, '').toLowerCase();
-            const userUName = (user?.username || '').replace(/^@/, '').toLowerCase();
+            const userUName = (updatedUser?.username || '').replace(/^@/, '').toLowerCase();
             const isAuthor = Boolean(
               (pAuthorUName && userUName && pAuthorUName === userUName) ||
-              (p.author.id && user?.uid && p.author.id === user.uid) ||
-              (p.author.id && user?.id && p.author.id === user.id)
+              (p.author.id && updatedUser?.uid && p.author.id === updatedUser.uid) ||
+              (p.author.id && updatedUser?.id && p.author.id === updatedUser.id)
             );
             if (isAuthor) {
-              return { ...p, author: { ...p.author, avatar: res.driveUrl! } };
+              return { ...p, author: { ...p.author, name: updatedUser.name || p.author.name, avatar: res.driveUrl! } };
             }
             return p;
           });
@@ -1496,8 +1546,24 @@ export default function App() {
         user?.username && (post.repostedBy || []).some((username: string) => (username || '').toLowerCase() === (user.username || '').toLowerCase())
       );
       
+      const pAuthorUName = (post.author?.username || '').replace(/^@/, '').toLowerCase();
+      const userUName = (user?.username || '').replace(/^@/, '').toLowerCase();
+      const isCurrentUser = Boolean(
+        user && (
+          (pAuthorUName && userUName && pAuthorUName === userUName) ||
+          (post.author?.id && user.uid && post.author.id === user.uid) ||
+          (post.author?.id && user.id && post.author.id === user.id)
+        )
+      );
+      const dynamicAuthor = isCurrentUser && user ? {
+        ...post.author,
+        name: user.name || post.author.name,
+        avatar: user.avatar || post.author.avatar
+      } : post.author;
+
       return {
         ...post,
+        author: dynamicAuthor,
         userInteractions: {
           ...post.userInteractions,
           liked: isLiked,

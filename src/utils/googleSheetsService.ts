@@ -40,7 +40,7 @@ export async function syncProfileToGoogleSheets(
   const explicitAvatar = getExplicitAvatar(uid, cleanUsername, 'MED68001');
 
   let avatarToSend = user.avatar || '';
-  if ((!avatarToSend || avatarToSend.includes('api.dicebear.com')) && explicitAvatar && !explicitAvatar.includes('api.dicebear.com')) {
+  if (!options?.isExplicitSave && (!avatarToSend || avatarToSend.includes('api.dicebear.com')) && explicitAvatar && !explicitAvatar.includes('api.dicebear.com')) {
     avatarToSend = explicitAvatar;
   }
 

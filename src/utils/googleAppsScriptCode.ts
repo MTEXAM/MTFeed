@@ -1,24 +1,87 @@
 /**
  * Complete Google Apps Script template for Google Sheets & Google Drive
  * Includes:
- * 1. Automatic pre-deletion of any file with the same name before saving new profile image
- * 2. Reset system & Drive cleanup action ('resetData')
- * 3. Delete user & post cleanup ('deleteUser', 'deletePost')
+ * 1. Automatic pre-deletion of any file with the same name in Google Drive (App_Images / MTFeed_Profiles) before saving
+ * 2. Case-insensitive header matching (UID, Username, DisplayName, ProfileImage, LastUpdate)
+ * 3. In-place update of user row (no duplicate rows in Google Sheets)
+ * 4. 1-Click System Reset (cleanAndResetAll / resetAllDataNow)
  */
 export const GOOGLE_APPS_SCRIPT_SOURCE = `/**
- * MTFeed Google Sheets & Google Drive Integration Script
- * ระบบซิงก์ข้อมูลสองทาง + จัดการ Google Drive อัจฉริยะ:
- * - ลบไฟล์เดิมที่มีชื่อซ้ำกันออกก่อนเสมอ แล้วค่อยบันทึกไฟล์ใหม่เข้าไป
- * - รองรับคำสั่ง resetData เพื่อล้างชีตและล้างไฟล์ในไดรฟ์เป็นค่าเริ่มต้น
- * - รองรับคำสั่ง deleteUser และ deletePost พร้อมล้างไฟล์ที่เกี่ยวข้อง
+ * =========================================================================
+ * MTFeed - Google Apps Script (Production Ready)
+ * จัดการ Google Drive และ Google Sheets:
+ * - ลบไฟล์รูปที่มีชื่อเดียวกันใน Google Drive ออกให้หมดก่อน แล้วค่อยส่งไฟล์ใหม่เข้าไป
+ * - ค้นหาคอลัมน์แบบไม่สนตัวพิมพ์เล็ก/ใหญ่ (UID, Username, DisplayName, ProfileImage, LastUpdate)
+ * - อัปเดตข้อมูลทับแถวเดิม (ไม่สร้างแถวซ้ำ)
+ * - มีฟังก์ชัน cleanAndResetAll() สำหรับล้างไฟล์ซ้ำในไดรฟ์และล้างข้อมูลในชีต
+ * =========================================================================
  */
 
+// ฟังก์ชันหาตำแหน่งคอลัมน์แบบไม่สนใจตัวพิมพ์เล็ก-ใหญ่
+function getColIndex(headers, possibleNames) {
+  if (!headers || !headers.length) return -1;
+  for (var i = 0; i < headers.length; i++) {
+    var h = String(headers[i] || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    for (var j = 0; j < possibleNames.length; j++) {
+      var p = String(possibleNames[j] || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (h === p) return i;
+    }
+  }
+  return -1;
+}
+
+// ฟังก์ชันหาโฟลเดอร์สำหรับเก็บรูป (รองรับทั้ง App_Images และ MTFeed_Profiles)
+function getTargetFolder() {
+  var names = ['App_Images', 'MTFeed_Profiles'];
+  for (var i = 0; i < names.length; i++) {
+    var folders = DriveApp.getFoldersByName(names[i]);
+    if (folders.hasNext()) return folders.next();
+  }
+  return DriveApp.createFolder('App_Images');
+}
+
+// ฟังก์ชันลบไฟล์เดิมของผู้ใช้นี้ใน Google Drive ออกทั้งหมด (ทั้งตาม ID และตามชื่อในโฟลเดอร์)
+function trashOldFilesForUser(uid, username, oldFileUrlOrId) {
+  // 1. ลบจาก URL หรือ File ID เดิมทันที (แม่นยำ 100%)
+  if (oldFileUrlOrId) {
+    var match = String(oldFileUrlOrId).match(/\/d\/([a-zA-Z0-9_-]+)/) || String(oldFileUrlOrId).match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    var targetId = match ? match[1] : (String(oldFileUrlOrId).length > 20 ? String(oldFileUrlOrId).trim() : null);
+    if (targetId) {
+      try { DriveApp.getFileById(targetId).setTrashed(true); } catch(e) {}
+    }
+  }
+
+  // 2. ตรวจสอบไฟล์ทั้งหมดในโฟลเดอร์ App_Images, MTFeed_Profiles และ MTFeed_Uploads
+  var u1 = (uid || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  var u2 = (username || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  var folderNames = ['App_Images', 'MTFeed_Profiles', 'MTFeed_Uploads'];
+  for (var f = 0; f < folderNames.length; f++) {
+    var fIter = DriveApp.getFoldersByName(folderNames[f]);
+    while (fIter.hasNext()) {
+      var folder = fIter.next();
+      var files = folder.getFiles();
+      while (files.hasNext()) {
+        var file = files.next();
+        var fname = file.getName().toLowerCase();
+        var isMatch = false;
+        if (u1 && fname.indexOf(u1) !== -1) isMatch = true;
+        if (u2 && fname.indexOf(u2) !== -1) isMatch = true;
+        if (isMatch) {
+          try { folder.removeFile(file); } catch(e) {}
+          try { file.setTrashed(true); } catch(e) {}
+        }
+      }
+    }
+  }
+}
+
 function doGet(e) {
-  var action = e.parameter.action;
+  var action = (e && e.parameter) ? e.parameter.action : 'getFeed';
   var ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  // ดึงรายการฟีดทั้งหมด
-  if (action === 'getFeed') {
+  // ดึงฟีดโพสต์ทั้งหมด
+  if (action === 'getFeed' || !action) {
     var sheet = ss.getSheetByName('Feed') || ss.getSheets()[0];
     var data = sheet.getDataRange().getValues();
     if (data.length <= 1) {
@@ -36,9 +99,9 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
-  // ดึงข้อมูลโปรไฟล์ผู้ใช้
+  // ดึงข้อมูลโปรไฟล์ผู้ใช้ (ค้นหาไม่สนตัวพิมพ์เล็ก/ใหญ่)
   if (action === 'getProfile') {
-    var uid = e.parameter.uid;
+    var uid = String((e && e.parameter && e.parameter.uid) || '').replace(/^#/, '').trim();
     var sheet = ss.getSheetByName('Users');
     if (!sheet) {
       return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Users sheet not found' }))
@@ -46,53 +109,34 @@ function doGet(e) {
     }
     var data = sheet.getDataRange().getValues();
     var headers = data[0];
-    var uidIdx = headers.indexOf('uid');
+    var uidIdx = getColIndex(headers, ['uid', 'id', 'userid']);
+    var uNameIdx = getColIndex(headers, ['username', 'user', 'handle']);
+    var dNameIdx = getColIndex(headers, ['displayname', 'name', 'author', 'fullname']);
+    var imgIdx = getColIndex(headers, ['profileimage', 'avatar', 'image', 'picture', 'photo']);
+    var timeIdx = getColIndex(headers, ['lastupdate', 'updatedat', 'timestamp', 'date', 'time']);
+
     for (var i = 1; i < data.length; i++) {
-      var rowUid = String(data[i][uidIdx] || '').replace(/^#/, '');
-      if (rowUid === uid || data[i][uidIdx] === uid || data[i][uidIdx] === '#' + uid) {
-        var profile = {};
-        headers.forEach(function(h, idx) { profile[h] = data[i][idx]; });
+      var rowUid = String(uidIdx !== -1 ? data[i][uidIdx] : data[i][0] || '').replace(/^#/, '').trim();
+      var rowUName = String(uNameIdx !== -1 ? data[i][uNameIdx] : '').replace(/^@/, '').trim();
+
+      if (rowUid.toLowerCase() === uid.toLowerCase() || (rowUName && rowUName.toLowerCase() === uid.toLowerCase())) {
+        var profile = {
+          uid: rowUid,
+          username: uNameIdx !== -1 ? data[i][uNameIdx] : '',
+          displayName: dNameIdx !== -1 ? data[i][dNameIdx] : '',
+          profileImage: imgIdx !== -1 ? data[i][imgIdx] : '',
+          lastUpdate: timeIdx !== -1 ? data[i][timeIdx] : ''
+        };
         return ContentService.createTextOutput(JSON.stringify({ status: 'success', data: profile }))
           .setMimeType(ContentService.MimeType.JSON);
       }
     }
-    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'User not found' }))
+    return ContentService.createTextOutput(JSON.stringify({ status: 'not_found', message: 'User not found' }))
       .setMimeType(ContentService.MimeType.JSON);
   }
 
   return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Invalid action' }))
     .setMimeType(ContentService.MimeType.JSON);
-}
-
-// ฟังก์ชันลบไฟล์ตามชื่อหรือคำขึ้นต้นชื่อ ทั้งในโฟลเดอร์และในไดรฟ์
-function removeFilesByNameOrPrefix(folder, namePrefix) {
-  if (!namePrefix) return;
-  var extensions = ['', '.jpg', '.jpeg', '.png', '.webp', '.gif'];
-
-  // 1. ค้นหาและลบใน DriveApp ตามชื่อไฟล์ที่ตรงกัน
-  for (var i = 0; i < extensions.length; i++) {
-    var targetName = namePrefix + extensions[i];
-    try {
-      var files = DriveApp.getFilesByName(targetName);
-      while (files.hasNext()) {
-        try { files.next().setTrashed(true); } catch(e) {}
-      }
-    } catch(e) {}
-  }
-
-  // 2. ค้นหาในโฟลเดอร์และลบทุกไฟล์ที่ขึ้นต้นด้วย namePrefix
-  if (folder) {
-    try {
-      var fFiles = folder.getFiles();
-      while (fFiles.hasNext()) {
-        var f = fFiles.next();
-        var fname = f.getName();
-        if (fname.indexOf(namePrefix) === 0) {
-          try { f.setTrashed(true); } catch(e) {}
-        }
-      }
-    } catch(e) {}
-  }
 }
 
 function doPost(e) {
@@ -102,125 +146,114 @@ function doPost(e) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
 
     // ==========================================
-    // 1. UPDATE PROFILE & AUTO-DELETE OLD IMAGES
+    // 1. UPDATE PROFILE
     // ==========================================
     if (action === 'updateProfile') {
       var usersSheet = ss.getSheetByName('Users');
       if (!usersSheet) {
         usersSheet = ss.insertSheet('Users');
-        usersSheet.appendRow(['uid', 'username', 'displayName', 'profileImage', 'updatedAt']);
+        usersSheet.appendRow(['UID', 'Username', 'DisplayName', 'ProfileImage', 'LastUpdate']);
       }
 
-      var uid = String(data.uid || data.username || '').replace(/^#/, '');
+      var uid = String(data.uid || data.username || '').replace(/^#/, '').trim();
+      var username = String(data.username || '').replace(/^@/, '').trim();
+      var displayName = String(data.displayName || data.name || username || 'User').trim();
       var profileImageUrl = data.profileImage || '';
 
-      // หากมีการอัปโหลดรูปใหม่ (Base64)
-      if (profileImageUrl && profileImageUrl.indexOf('data:image') === 0) {
-        var folders = DriveApp.getFoldersByName('MTFeed_Profiles');
-        var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder('MTFeed_Profiles');
+      // ค้นหาแถวของผู้ใช้นี้ใน Google Sheets ก่อนเสมอ เพื่อดึง URL รูปเดิม
+      var uData = usersSheet.getDataRange().getValues();
+      var uHeaders = uData[0];
+      var uidIdx = getColIndex(uHeaders, ['uid', 'id', 'userid']);
+      var uNameIdx = getColIndex(uHeaders, ['username', 'user', 'handle']);
+      var dNameIdx = getColIndex(uHeaders, ['displayname', 'name', 'author', 'fullname']);
+      var imgIdx = getColIndex(uHeaders, ['profileimage', 'avatar', 'image', 'picture', 'photo']);
+      var timeIdx = getColIndex(uHeaders, ['lastupdate', 'updatedat', 'timestamp', 'date', 'time']);
 
-        // *** ขั้นตอนสำคัญ: ลบไฟล์ที่มีชื่อเหมือนกันเดิมออกก่อนเสมอ ***
-        var baseName = 'profile_' + uid;
-        removeFilesByNameOrPrefix(folder, baseName);
-        if (data.username) {
-          removeFilesByNameOrPrefix(folder, 'profile_' + data.username);
-        }
-
-        // ลบตาม file ID เดิมถ้าส่งมา
-        if (data.oldFileId) {
-          try { DriveApp.getFileById(data.oldFileId).setTrashed(true); } catch(err) {}
-        }
-        if (data.oldProfileImage) {
-          var idMatch = String(data.oldProfileImage).match(/\/d\/([a-zA-Z0-9_-]+)/) || String(data.oldProfileImage).match(/[?&]id=([a-zA-Z0-9_-]+)/);
-          if (idMatch && idMatch[1]) {
-            try { DriveApp.getFileById(idMatch[1]).setTrashed(true); } catch(err) {}
+      var userRowIndex = -1;
+      var existingOldProfileUrl = '';
+      for (var j = 1; j < uData.length; j++) {
+        var existingUid = String(uidIdx !== -1 ? uData[j][uidIdx] : uData[j][0] || '').replace(/^#/, '').trim();
+        var existingUName = String(uNameIdx !== -1 ? uData[j][uNameIdx] : '').replace(/^@/, '').trim();
+        if (existingUid.toLowerCase() === uid.toLowerCase() || (username && existingUName.toLowerCase() === username.toLowerCase())) {
+          userRowIndex = j + 1;
+          if (imgIdx !== -1) {
+            existingOldProfileUrl = String(uData[j][imgIdx] || '');
           }
+          break;
         }
+      }
 
-        // *** หลังจากลบไฟล์เดิมที่ชื่อเหมือนกันหมดแล้ว ค่อยส่งไฟล์ใหม่เข้าไป ***
+      // หากส่งรูปภาพใหม่มาเป็น Base64
+      if (profileImageUrl && profileImageUrl.indexOf('data:image') === 0) {
+        var folder = getTargetFolder();
+
+        // 1. ลบไฟล์เดิมของผู้ใช้นี้ใน Google Drive ออกให้หมด (ทั้งจาก URL เดิมในชีต และค้นหาทุกไฟล์ใน App_Images)
+        trashOldFilesForUser(uid, username, existingOldProfileUrl || data.oldFileId || data.oldProfileImage);
+
+        // 2. สร้างไฟล์รูปภาพใหม่ในไดรฟ์
         var contentType = profileImageUrl.substring(5, profileImageUrl.indexOf(';'));
         var base64Data = profileImageUrl.substring(profileImageUrl.indexOf(',') + 1);
         var bytes = Utilities.base64Decode(base64Data);
         var ext = contentType.indexOf('png') !== -1 ? '.png' : '.jpg';
-        var newFileName = baseName + ext;
+        var newFileName = 'profile_' + uid + ext;
         var blob = Utilities.newBlob(bytes, contentType, newFileName);
         var newFile = folder.createFile(blob);
         newFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
         profileImageUrl = 'https://lh3.googleusercontent.com/d/' + newFile.getId();
       }
 
-      // บันทึกหรืออัปเดตลง Sheet Users
-      var uData = usersSheet.getDataRange().getValues();
-      var uHeaders = uData[0];
-      var uIdx = uHeaders.indexOf('uid');
-      var userRow = -1;
-      for (var j = 1; j < uData.length; j++) {
-        var existingUid = String(uData[j][uIdx] || '').replace(/^#/, '');
-        if (existingUid === uid) {
-          userRow = j + 1;
-          break;
-        }
-      }
-
-      var rowValues = [uid, data.username || '', data.displayName || '', profileImageUrl, new Date().toISOString()];
-      if (userRow > 0) {
-        usersSheet.getRange(userRow, 1, 1, rowValues.length).setValues([rowValues]);
+      var nowIso = new Date().toISOString();
+      if (userRowIndex > 0) {
+        // อัปเดตทับแถวเดิม
+        if (uidIdx !== -1) usersSheet.getRange(userRowIndex, uidIdx + 1).setValue(uid);
+        if (uNameIdx !== -1) usersSheet.getRange(userRowIndex, uNameIdx + 1).setValue(username);
+        if (dNameIdx !== -1) usersSheet.getRange(userRowIndex, dNameIdx + 1).setValue(displayName);
+        if (imgIdx !== -1 && profileImageUrl) usersSheet.getRange(userRowIndex, imgIdx + 1).setValue(profileImageUrl);
+        if (timeIdx !== -1) usersSheet.getRange(userRowIndex, timeIdx + 1).setValue(nowIso);
       } else {
-        usersSheet.appendRow(rowValues);
+        // เพิ่มแถวใหม่
+        var newRow = [];
+        for (var c = 0; c < uHeaders.length; c++) newRow.push('');
+        if (uidIdx !== -1) newRow[uidIdx] = uid; else newRow[0] = uid;
+        if (uNameIdx !== -1) newRow[uNameIdx] = username;
+        if (dNameIdx !== -1) newRow[dNameIdx] = displayName;
+        if (imgIdx !== -1) newRow[imgIdx] = profileImageUrl;
+        if (timeIdx !== -1) newRow[timeIdx] = nowIso;
+        usersSheet.appendRow(newRow);
       }
 
       return ContentService.createTextOutput(JSON.stringify({
         status: 'success',
         updatedProfile: true,
-        profileImage: profileImageUrl
+        profileImage: profileImageUrl,
+        displayName: displayName
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
     // ==========================================
-    // 2. DELETE PROFILE IMAGE ONLY
-    // ==========================================
-    if (action === 'deleteProfileImage') {
-      var uid = String(data.uid || data.username || '').replace(/^#/, '');
-      var profFolders = DriveApp.getFoldersByName('MTFeed_Profiles');
-      var profFolder = profFolders.hasNext() ? profFolders.next() : null;
-      removeFilesByNameOrPrefix(profFolder, 'profile_' + uid);
-      if (data.username) {
-        removeFilesByNameOrPrefix(profFolder, 'profile_' + data.username);
-      }
-      return ContentService.createTextOutput(JSON.stringify({ status: 'success', deletedImage: true }))
-        .setMimeType(ContentService.MimeType.JSON);
-    }
-
-    // ==========================================
-    // 3. DELETE USER (ลบทั้งใน Sheet และ Drive)
+    // 2. DELETE USER
     // ==========================================
     if (action === 'deleteUser') {
+      var uid = String(data.uid || data.username || '').replace(/^#/, '').trim();
       var usersSheet = ss.getSheetByName('Users');
-      var uid = String(data.uid || data.username || '').replace(/^#/, '');
       if (usersSheet && uid) {
         var uData = usersSheet.getDataRange().getValues();
-        var uHeaders = uData[0];
-        var uIdx = uHeaders.indexOf('uid');
+        var uidIdx = getColIndex(uData[0], ['uid', 'id', 'userid']);
         for (var d = uData.length - 1; d >= 1; d--) {
-          var rowUid = String(uData[d][uIdx] || '').replace(/^#/, '');
-          if (rowUid === uid || uData[d][uIdx] === '#' + uid) {
+          var rowUid = String(uidIdx !== -1 ? uData[d][uidIdx] : uData[d][0] || '').replace(/^#/, '').trim();
+          if (rowUid.toLowerCase() === uid.toLowerCase()) {
             usersSheet.deleteRow(d + 1);
           }
         }
       }
-      // ลบรูปโปรไฟล์ใน Drive
-      var pFolders = DriveApp.getFoldersByName('MTFeed_Profiles');
-      var pFolder = pFolders.hasNext() ? pFolders.next() : null;
-      removeFilesByNameOrPrefix(pFolder, 'profile_' + uid);
-      if (data.username) {
-        removeFilesByNameOrPrefix(pFolder, 'profile_' + data.username);
-      }
-      return ContentService.createTextOutput(JSON.stringify({ status: 'success', deletedUser: uid }))
+      deleteExistingFilesByName('profile_' + uid);
+      if (data.username) deleteExistingFilesByName('profile_' + data.username);
+      return ContentService.createTextOutput(JSON.stringify({ status: 'success', deleted: uid }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
     // ==========================================
-    // 4. CREATE POST
+    // 3. CREATE POST
     // ==========================================
     if (action === 'createPost') {
       var feedSheet = ss.getSheetByName('Feed') || ss.getSheets()[0];
@@ -228,12 +261,11 @@ function doPost(e) {
       var pdfUrl = data.pdf || '';
 
       if (imageUrl && imageUrl.indexOf('data:image') === 0) {
-        var postFolders = DriveApp.getFoldersByName('MTFeed_Uploads');
-        var pFolder = postFolders.hasNext() ? postFolders.next() : DriveApp.createFolder('MTFeed_Uploads');
+        var postFolder = getTargetFolder();
         var imgType = imageUrl.substring(5, imageUrl.indexOf(';'));
         var imgBytes = Utilities.base64Decode(imageUrl.substring(imageUrl.indexOf(',') + 1));
         var imgBlob = Utilities.newBlob(imgBytes, imgType, 'post_' + Date.now() + '.jpg');
-        var imgFile = pFolder.createFile(imgBlob);
+        var imgFile = postFolder.createFile(imgBlob);
         imgFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
         imageUrl = 'https://lh3.googleusercontent.com/d/' + imgFile.getId();
       }
@@ -260,104 +292,18 @@ function doPost(e) {
     }
 
     // ==========================================
-    // 5. EDIT POST
-    // ==========================================
-    if (action === 'editPost') {
-      var feedSheet = ss.getSheetByName('Feed') || ss.getSheets()[0];
-      var fData = feedSheet.getDataRange().getValues();
-      for (var k = 1; k < fData.length; k++) {
-        if (String(fData[k][0]) === String(data.postId)) {
-          feedSheet.getRange(k + 1, 6).setValue(data.newContent);
-          return ContentService.createTextOutput(JSON.stringify({ status: 'success', edited: true }))
-            .setMimeType(ContentService.MimeType.JSON);
-        }
-      }
-      return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Post not found' }))
-        .setMimeType(ContentService.MimeType.JSON);
-    }
-
-    // ==========================================
-    // 6. DELETE POST (พร้อมลบรูปและ PDF ในไดรฟ์)
-    // ==========================================
-    if (action === 'deletePost') {
-      var feedSheet = ss.getSheetByName('Feed') || ss.getSheets()[0];
-      var fData = feedSheet.getDataRange().getValues();
-      for (var m = 1; m < fData.length; m++) {
-        if (String(fData[m][0]) === String(data.postId)) {
-          // ลบรูปโพสต์ใน Drive ถ้ามี
-          var postImg = fData[m][6];
-          if (postImg) {
-            var mId = String(postImg).match(/\/d\/([a-zA-Z0-9_-]+)/) || String(postImg).match(/[?&]id=([a-zA-Z0-9_-]+)/);
-            if (mId && mId[1]) {
-              try { DriveApp.getFileById(mId[1]).setTrashed(true); } catch(err) {}
-            }
-          }
-          feedSheet.deleteRow(m + 1);
-          return ContentService.createTextOutput(JSON.stringify({ status: 'success', deleted: true, row: m + 1 }))
-            .setMimeType(ContentService.MimeType.JSON);
-        }
-      }
-      return ContentService.createTextOutput(JSON.stringify({ status: 'success', deleted: true, note: 'already removed' }))
-        .setMimeType(ContentService.MimeType.JSON);
-    }
-
-    // ==========================================
-    // 7. RESET DATA (ล้างข้อมูลทั้งชีตและไดรฟ์เป็นค่าเริ่มต้น)
+    // 4. RESET ALL DATA
     // ==========================================
     if (action === 'resetData' || action === 'resetAll') {
-      // 1. ล้างไฟล์ในโฟลเดอร์ MTFeed_Profiles ทั้งหมด
-      var profFolders = DriveApp.getFoldersByName('MTFeed_Profiles');
-      while (profFolders.hasNext()) {
-        var pFol = profFolders.next();
-        var pFiles = pFol.getFiles();
-        while (pFiles.hasNext()) {
-          try { pFiles.next().setTrashed(true); } catch(e) {}
-        }
-      }
-
-      // 2. ล้างไฟล์ในโฟลเดอร์ MTFeed_Uploads ทั้งหมด
-      var upFolders = DriveApp.getFoldersByName('MTFeed_Uploads');
-      while (upFolders.hasNext()) {
-        var uFol = upFolders.next();
-        var uFiles = uFol.getFiles();
-        while (uFiles.hasNext()) {
-          try { uFiles.next().setTrashed(true); } catch(e) {}
-        }
-      }
-
-      // 3. ล้างชีต Feed ให้เหลือเฉพาะแถวหัวตาราง
-      var feedSheet = ss.getSheetByName('Feed') || ss.getSheets()[0];
-      if (feedSheet) {
-        var lastRow = feedSheet.getLastRow();
-        if (lastRow > 1) {
-          feedSheet.deleteRows(2, lastRow - 1);
-        }
-      }
-
-      // 4. ล้างชีต Users ให้เหลือเฉพาะหัวตารางและแอดมินค่าเริ่มต้น MED68001
-      var usersSheet = ss.getSheetByName('Users');
-      if (usersSheet) {
-        var lastUserRow = usersSheet.getLastRow();
-        if (lastUserRow > 1) {
-          usersSheet.deleteRows(2, lastUserRow - 1);
-        }
-        usersSheet.appendRow([
-          'MED68001',
-          '👑Admin',
-          '👑 Admin',
-          'https://lh3.googleusercontent.com/d/1ylD5QrEMSWIuWSNR4eHr6x9F4V5KZoe3',
-          new Date().toISOString()
-        ]);
-      }
-
+      cleanAndResetAll();
       return ContentService.createTextOutput(JSON.stringify({
         status: 'success',
         resetComplete: true,
-        message: 'Drive folders and Google Sheets reset to default successfully'
+        message: 'All duplicate files in Drive trashed and Google Sheets reset'
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Unsupported action' }))
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Unknown action' }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch(err) {
     return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }))
@@ -366,50 +312,60 @@ function doPost(e) {
 }
 
 // =========================================================================
-// ฟังก์ชันล้างข้อมูลทั้งหมด สามารถกดปุ่ม "เรียกใช้ (Run)" ได้โดยตรงใน Apps Script Editor!
+// ฟังก์ชันล้างข้อมูลทั้งหมด (กดปุ่ม "เรียกใช้ (Run)" บนหัวโปรแกรม Apps Script ได้เลย!)
 // =========================================================================
-function resetAllDataNow() {
-  // 1. ล้างไฟล์ในโฟลเดอร์ MTFeed_Profiles
-  var profFolders = DriveApp.getFoldersByName('MTFeed_Profiles');
-  while (profFolders.hasNext()) {
-    var pFol = profFolders.next();
-    var pFiles = pFol.getFiles();
-    while (pFiles.hasNext()) {
-      try { pFiles.next().setTrashed(true); } catch(e) {}
+function cleanAndResetAll() {
+  // 1. ลบไฟล์ทั้งหมดในโฟลเดอร์ App_Images, MTFeed_Profiles, MTFeed_Uploads
+  var folderNames = ['App_Images', 'MTFeed_Profiles', 'MTFeed_Uploads'];
+  for (var f = 0; f < folderNames.length; f++) {
+    var folders = DriveApp.getFoldersByName(folderNames[f]);
+    while (folders.hasNext()) {
+      var fol = folders.next();
+      var files = fol.getFiles();
+      while (files.hasNext()) {
+        try { files.next().setTrashed(true); } catch(e) {}
+      }
     }
   }
 
-  // 2. ล้างไฟล์ในโฟลเดอร์ MTFeed_Uploads
-  var upFolders = DriveApp.getFoldersByName('MTFeed_Uploads');
-  while (upFolders.hasNext()) {
-    var uFol = upFolders.next();
-    var uFiles = uFol.getFiles();
-    while (uFiles.hasNext()) {
-      try { uFiles.next().setTrashed(true); } catch(e) {}
+  // 2. ค้นหาและลบไฟล์ profile_*.jpg ทั้งหมดที่อาจหลงเหลืออยู่ในไดรฟ์
+  try {
+    var searchFiles = DriveApp.searchFiles("title contains 'profile_' and trashed = false");
+    while (searchFiles.hasNext()) {
+      try { searchFiles.next().setTrashed(true); } catch(e) {}
     }
-  }
+  } catch(e) {}
 
-  // 3. ล้างชีต Feed
+  // 3. ล้างชีต Users ให้เหลือเฉพาะหัวตารางและแอดมินค่าเริ่มต้น MED68001
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var feedSheet = ss.getSheetByName('Feed') || ss.getSheets()[0];
-  if (feedSheet && feedSheet.getLastRow() > 1) {
-    feedSheet.deleteRows(2, feedSheet.getLastRow() - 1);
-  }
-
-  // 4. ล้างชีต Users (เหลือเฉพาะหัวตารางและแอดมิน MED68001)
   var usersSheet = ss.getSheetByName('Users');
   if (usersSheet) {
-    if (usersSheet.getLastRow() > 1) {
-      usersSheet.deleteRows(2, usersSheet.getLastRow() - 1);
+    var lastRow = usersSheet.getLastRow();
+    if (lastRow > 1) {
+      usersSheet.deleteRows(2, lastRow - 1);
     }
     usersSheet.appendRow([
       'MED68001',
-      '👑Admin',
-      '👑 Admin',
+      'bank',
+      'Bank',
       'https://lh3.googleusercontent.com/d/1ylD5QrEMSWIuWSNR4eHr6x9F4V5KZoe3',
       new Date().toISOString()
     ]);
   }
-  Logger.log('✅ ล้างข้อมูล Google Drive และ Google Sheets ทั้งหมดกลับเป็นค่าเริ่มต้นเรียบร้อยแล้ว');
+
+  // 4. ล้างชีต Feed
+  var feedSheet = ss.getSheetByName('Feed');
+  if (feedSheet) {
+    var fLastRow = feedSheet.getLastRow();
+    if (fLastRow > 1) {
+      feedSheet.deleteRows(2, fLastRow - 1);
+    }
+  }
+
+  Logger.log('✅ ล้างข้อมูลใน Google Drive และ Google Sheets เรียบร้อยแล้ว!');
+}
+
+function resetAllDataNow() {
+  cleanAndResetAll();
 }
 `;

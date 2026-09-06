@@ -275,7 +275,15 @@ export function SystemHealthModal({
             </div>
 
             {showScript && (
-              <div className="relative mt-2">
+              <div className="relative mt-2 space-y-2">
+                <div className="p-3 bg-indigo-50/80 border border-indigo-200 rounded-lg text-xs text-indigo-900 leading-relaxed">
+                  <p className="font-bold text-indigo-950 mb-1">💡 ขั้นตอนอัปเดตให้มีผล 100%:</p>
+                  <ol className="list-decimal list-inside space-y-1 text-gray-700">
+                    <li>นำโค้ดด้านล่างไปวางทับใน <b>Google Apps Script</b> แล้วกดบันทึก (Ctrl+S)</li>
+                    <li>กด <b>ทำให้ใช้งานได้ (Deploy)</b> &gt; <b>จัดการการทำให้ใช้งานได้ (Manage deployments)</b> &gt; คลิกไอคอน <b>ดินสอ (แก้ไข)</b> &gt; เลือกรุ่นเป็น <b>"รุ่นใหม่" (New version)</b> &gt; กด <b>ทำให้ใช้งานได้</b></li>
+                    <li>หรือเลือกฟังก์ชัน <b>cleanAndResetAll</b> บนแถบเครื่องมือ แล้วกด <b>"เรียกใช้ (Run)"</b> เพื่อล้างไฟล์ซ้ำในไดรฟ์และล้างชีตได้ทันที!</li>
+                  </ol>
+                </div>
                 <pre className="bg-gray-900 text-gray-100 text-[11px] p-3 rounded-lg overflow-x-auto max-h-56 font-mono leading-relaxed select-all">
                   {GOOGLE_APPS_SCRIPT_SOURCE}
                 </pre>
