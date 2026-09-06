@@ -245,6 +245,51 @@ export async function clearAllUsersFromFirestore(keepUser?: SessionUser): Promis
   }
 }
 
+// Reset Firestore posts and users completely to initial defaults
+export async function resetFirestoreToDefault(): Promise<void> {
+  try {
+    // 1. Delete all posts
+    const postsRef = collection(db, POSTS_COLLECTION);
+    const postSnaps = await getDocs(postsRef);
+    const deletePostPromises = postSnaps.docs.map(d => deleteDoc(d.ref));
+    await Promise.all(deletePostPromises);
+
+    // 2. Delete all users
+    const usersRef = collection(db, USERS_COLLECTION);
+    const userSnaps = await getDocs(usersRef);
+    const deleteUserPromises = userSnaps.docs.map(d => deleteDoc(d.ref));
+    await Promise.all(deleteUserPromises);
+
+    // 3. Re-seed default users
+    const batch = writeBatch(db);
+    Object.values(DEFAULT_ACTIVE_USERS).forEach((user) => {
+      const docId = (user.uid || user.username).toString();
+      const userRef = doc(db, USERS_COLLECTION, docId);
+      const userData: any = { ...user };
+      Object.keys(userData).forEach(key => {
+        if (userData[key] === undefined) delete userData[key];
+      });
+      batch.set(userRef, {
+        ...userData,
+        createdAtMs: Date.now()
+      }, { merge: true });
+    });
+    await batch.commit();
+
+    // 4. Re-seed initial posts
+    const postBatch = writeBatch(db);
+    INITIAL_POSTS.forEach((post) => {
+      const pRef = doc(db, POSTS_COLLECTION, post.id);
+      postBatch.set(pRef, sanitizeForFirestore(post), { merge: true });
+    });
+    await postBatch.commit();
+
+    console.log('[FIRESTORE RESET] Firestore reset to default posts and users successfully');
+  } catch (e) {
+    console.error('[FIRESTORE RESET ERROR]', e);
+  }
+}
+
 // Recursive sanitizer to remove any undefined fields before writing to Firestore
 function sanitizeForFirestore(val: any): any {
   if (val === null || val === undefined) return null;

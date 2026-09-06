@@ -31,7 +31,7 @@ export async function executeOutboxAction(item: OutboxItem): Promise<boolean> {
         const user = item.payload;
         if (user && (user.uid || user.username)) {
           await saveUserToFirestore(user);
-          await syncProfileToGoogleSheets(user);
+          await syncProfileToGoogleSheets(user, { isExplicitSave: false });
           systemHealthManager.reportFirestoreSuccess();
           systemHealthManager.reportSheetsSuccess();
         }

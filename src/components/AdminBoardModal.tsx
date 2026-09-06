@@ -11,6 +11,7 @@ export function AdminBoardModal({
   registeredUsers = [],
   onDeleteUser,
   onClearAllUsers,
+  onResetEntireSystem,
   currentUser,
   onSendBroadcast,
   onOpenSystemHealth
@@ -22,6 +23,7 @@ export function AdminBoardModal({
   registeredUsers?: SessionUser[];
   onDeleteUser?: (uidOrUsername: string) => void;
   onClearAllUsers?: () => void;
+  onResetEntireSystem?: () => Promise<void>;
   currentUser?: SessionUser | null;
   onSendBroadcast?: (broadcast: { 
     title: string; 
@@ -34,6 +36,8 @@ export function AdminBoardModal({
   const [activeTab, setActiveTab] = useState<'reports' | 'users' | 'broadcast'>('reports');
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<SessionUser | null>(null);
   const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
+  const [showResetSystemConfirm, setShowResetSystemConfirm] = useState(false);
+  const [isResettingSystem, setIsResettingSystem] = useState(false);
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
 
   // Broadcast Form State
@@ -71,6 +75,27 @@ export function AdminBoardModal({
       setShowClearAllConfirm(false);
       setActionSuccessMsg('ล้างรายชื่อสมาชิกในระบบเรียบร้อยแล้ว (ยกเว้นแอดมินปัจจุบัน)');
       setTimeout(() => setActionSuccessMsg(null), 4000);
+    }
+  };
+
+  const handleResetSystem = async () => {
+    if (!currentUser?.isAdmin) {
+      alert('❌ เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถดำเนินการนี้ได้');
+      setShowResetSystemConfirm(false);
+      return;
+    }
+    try {
+      setIsResettingSystem(true);
+      if (onResetEntireSystem) {
+        await onResetEntireSystem();
+      }
+      setShowResetSystemConfirm(false);
+      setActionSuccessMsg('รีเซ็ตระบบทั้งหมดเป็นค่าเริ่มต้นสำเร็จ (Google Sheets, Drive, Firestore, SQLite)');
+      setTimeout(() => setActionSuccessMsg(null), 5000);
+    } catch (e: any) {
+      alert('เกิดข้อผิดพลาดในการรีเซ็ตระบบ: ' + e.message);
+    } finally {
+      setIsResettingSystem(false);
     }
   };
 
@@ -241,6 +266,55 @@ export function AdminBoardModal({
                   <button
                     onClick={() => setShowClearAllConfirm(false)}
                     className="px-3 py-1.5 bg-white hover:bg-gray-100 text-gray-700 rounded-lg text-xs font-medium transition-colors border border-gray-300"
+                  >
+                    ยกเลิก
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Confirm Reset Entire System Overlay */}
+        {showResetSystemConfirm && (
+          <div className="p-4 bg-rose-100 border-b-2 border-rose-400 animate-in fade-in">
+            <div className="flex items-start space-x-3">
+              <div className="p-2 bg-rose-200 text-rose-800 rounded-xl flex-shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-black text-rose-950">
+                  ⚠️ ยืนยันรีเซ็ตระบบทั้งหมดเป็นค่าเริ่มต้น (Reset Entire System)?
+                </p>
+                <p className="text-xs text-rose-900 mt-1 leading-relaxed">
+                  ระบบจะล้างข้อมูลทั้งหมดให้กลับเป็นค่าเริ่มต้น:
+                  <br />• <b>Google Drive:</b> ล้างโฟลเดอร์รูปโปรไฟล์และรูปโพสต์ทั้งหมด
+                  <br />• <b>Google Sheets:</b> ล้างชีต Feed และ Users (เหลือเฉพาะหัวตารางและแอดมิน)
+                  <br />• <b>Cloud Firestore:</b> รีเซ็ตโพสต์และสมาชิกระบบกลับเป็นค่าเริ่มต้น
+                  <br />• <b>SQLite Local Backup:</b> ล้างประวัติสำรองข้อมูลทั้งหมด
+                </p>
+                <div className="mt-3 flex space-x-2">
+                  <button
+                    disabled={isResettingSystem}
+                    onClick={handleResetSystem}
+                    className="px-4 py-2 bg-rose-700 hover:bg-rose-800 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-colors shadow-xs flex items-center space-x-1.5"
+                  >
+                    {isResettingSystem ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                        <span>กำลังรีเซ็ตทุกระบบ...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4" />
+                        <span>ยืนยันรีเซ็ตทั้งหมดเดี๋ยวนี้</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    disabled={isResettingSystem}
+                    onClick={() => setShowResetSystemConfirm(false)}
+                    className="px-3.5 py-2 bg-white hover:bg-gray-100 text-gray-700 rounded-lg text-xs font-medium transition-colors border border-gray-300"
                   >
                     ยกเลิก
                   </button>
@@ -470,15 +544,27 @@ export function AdminBoardModal({
                     {registeredUsers.length} บัญชี
                   </span>
                 </div>
-                {onClearAllUsers && registeredUsers.length > 0 && (
-                  <button
-                    onClick={() => setShowClearAllConfirm(true)}
-                    className="inline-flex items-center px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors shadow-2xs"
-                  >
-                    <Trash2 className="w-3.5 h-3.5 mr-1" />
-                    ล้างบัญชีทั้งหมด
-                  </button>
-                )}
+                <div className="flex items-center space-x-2">
+                  {onResetEntireSystem && (
+                    <button
+                      onClick={() => setShowResetSystemConfirm(true)}
+                      className="inline-flex items-center px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                      title="ล้างชีต ล้างไดรฟ์ ล้าง SQLite และรีเซ็ต Firestore กลับเป็นค่าเริ่มต้น"
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 mr-1 text-rose-600" />
+                      รีเซ็ตระบบทั้งหมด
+                    </button>
+                  )}
+                  {onClearAllUsers && registeredUsers.length > 0 && (
+                    <button
+                      onClick={() => setShowClearAllConfirm(true)}
+                      className="inline-flex items-center px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 mr-1" />
+                      ล้างบัญชีทั้งหมด
+                    </button>
+                  )}
+                </div>
               </div>
               
               {registeredUsers.length === 0 ? (

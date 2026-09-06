@@ -17,9 +17,9 @@ import { SystemHealthModal } from './components/SystemHealthModal';
 import { SystemToastContainer, ToastItem } from './components/SystemToast';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post, User } from './types';
-import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid, formatUserBadge, DEFAULT_ACTIVE_USERS, MAIN_SITE_URL, MAIN_SITE_HOST, sanitizeDisplayName, sanitizeUsername, setExplicitAvatar } from './utils/auth';
-import { subscribeToPosts, subscribeToUsers, subscribeToSystemNotifications, sendSystemBroadcastToFirestore, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, getPostSignature, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore, syncPostsToFirestore, getUserFromFirestore, getBackupPostsFromSQLite, getBackupUsersFromSQLite, restoreBackupsToFirestore } from './utils/firestoreService';
-import { fetchFeedFromGoogleSheets, fetchProfileFromGoogleSheets, syncProfileToGoogleSheets, syncPostToGoogleSheets, extractProfilesFromSheetPosts } from './utils/googleSheetsService';
+import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid, formatUserBadge, DEFAULT_ACTIVE_USERS, MAIN_SITE_URL, MAIN_SITE_HOST, sanitizeDisplayName, sanitizeUsername, setExplicitAvatar, getExplicitAvatar } from './utils/auth';
+import { subscribeToPosts, subscribeToUsers, subscribeToSystemNotifications, sendSystemBroadcastToFirestore, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, getPostSignature, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore, syncPostsToFirestore, getUserFromFirestore, getBackupPostsFromSQLite, getBackupUsersFromSQLite, restoreBackupsToFirestore, resetFirestoreToDefault } from './utils/firestoreService';
+import { fetchFeedFromGoogleSheets, fetchProfileFromGoogleSheets, syncProfileToGoogleSheets, syncPostToGoogleSheets, extractProfilesFromSheetPosts, deleteUserFromGoogleSheets, resetGoogleSheetsAndDrive } from './utils/googleSheetsService';
 import { systemHealthManager, SystemHealthState } from './utils/systemHealthService';
 import { formatRealTime } from './utils/timeUtils';
 import { INITIAL_POSTS } from './data';
@@ -118,8 +118,10 @@ function getInitialUser(): SessionUser | null {
         console.error('Error saving auto user session:', e);
       }
 
-      // Immediately sync profile to Google Sheets
-      syncProfileToGoogleSheets(autoUser).catch(err => console.warn('[SHEETS INSTANT AUTO SYNC ERROR]', err));
+      // Immediately sync profile to Google Sheets if not a raw base64 data URL
+      if (autoUser.avatar && !autoUser.avatar.startsWith('data:image/')) {
+        syncProfileToGoogleSheets(autoUser, { isExplicitSave: false }).catch(err => console.warn('[SHEETS INSTANT AUTO SYNC ERROR]', err));
+      }
 
       return autoUser;
     }
@@ -203,6 +205,8 @@ export default function App() {
   const [isOnlineModalOpen, setIsOnlineModalOpen] = useState(false);
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
   const [isSystemHealthModalOpen, setIsSystemHealthModalOpen] = useState(false);
+  const [showEmergencyAlert, setShowEmergencyAlert] = useState(true);
+  const [isEmergencyAdminModalOpen, setIsEmergencyAdminModalOpen] = useState(false);
   const [healthState, setHealthState] = useState<SystemHealthState>(() => systemHealthManager.getState());
   // Interaction Cooldown state
   const lastInteractionRef = useRef<number>(0);
@@ -910,6 +914,7 @@ export default function App() {
 
   const handleSaveProfile = (updatedData: Partial<SessionUser>) => {
     if (!user) return;
+    const oldAvatar = user.avatar;
     const updatedUser: SessionUser = {
       ...user,
       ...updatedData,
@@ -927,14 +932,64 @@ export default function App() {
 
     if (updatedUser.avatar && !updatedUser.avatar.includes('api.dicebear.com')) {
       setExplicitAvatar(updatedUser.uid || updatedUser.id, updatedUser.avatar);
+      if (updatedUser.username) {
+        setExplicitAvatar(updatedUser.username, updatedUser.avatar);
+      }
     }
 
     setUser(updatedUser);
     saveRegisteredUser(updatedUser);
     saveUserToFirestore(updatedUser);
     
-    // Explicit user action: sync profile to Google Sheets/Drive ONCE
-    syncProfileToGoogleSheets(updatedUser).then(() => {
+    // Explicit user action: sync profile to Google Sheets/Drive ONCE with isExplicitSave: true and oldAvatar for Drive deletion
+    syncProfileToGoogleSheets(updatedUser, { oldAvatar, isExplicitSave: true }).then((res) => {
+      if (res.driveUrl && res.driveUrl.startsWith('http')) {
+        console.log('[DRIVE SYNC] Received permanent Drive URL for profile image:', res.driveUrl);
+        const permanentUser: SessionUser = {
+          ...updatedUser,
+          avatar: res.driveUrl
+        };
+        setUser(permanentUser);
+        setExplicitAvatar(permanentUser.uid || permanentUser.id, res.driveUrl);
+        if (permanentUser.username) {
+          setExplicitAvatar(permanentUser.username, res.driveUrl);
+        }
+        saveRegisteredUser(permanentUser);
+        saveUserToFirestore(permanentUser);
+        try {
+          localStorage.setItem('mtfeed_user', JSON.stringify(permanentUser));
+          sessionStorage.setItem('mtfeed_user', JSON.stringify(permanentUser));
+          
+          const registry = getRegisteredUsers();
+          const key = permanentUser.uid || permanentUser.username;
+          if (key) {
+            registry[key] = permanentUser;
+            localStorage.setItem('mtfeed_accounts_registry', JSON.stringify(registry));
+          }
+        } catch (e) {}
+
+        // Update post avatars to permanent Drive URL
+        setPosts(prevPosts => {
+          const updated = prevPosts.map(p => {
+            if (!p || !p.author) return p;
+            const pAuthorUName = (p.author.username || '').replace(/^@/, '').toLowerCase();
+            const userUName = (user?.username || '').replace(/^@/, '').toLowerCase();
+            const isAuthor = Boolean(
+              (pAuthorUName && userUName && pAuthorUName === userUName) ||
+              (p.author.id && user?.uid && p.author.id === user.uid) ||
+              (p.author.id && user?.id && p.author.id === user.id)
+            );
+            if (isAuthor) {
+              return { ...p, author: { ...p.author, avatar: res.driveUrl! } };
+            }
+            return p;
+          });
+          try {
+            localStorage.setItem('mtfeed_posts', JSON.stringify(updated));
+          } catch (e) {}
+          return updated;
+        });
+      }
       // Refresh registered users from memory/storage
       setRegisteredUsers(getAllRegisteredUsersList());
     }).catch(e => console.warn('Failed to sync profile update to Google Sheets:', e));
@@ -1081,6 +1136,7 @@ export default function App() {
     }
     deleteRegisteredUser(uidOrUsername);
     await deleteUserFromFirestore(uidOrUsername);
+    deleteUserFromGoogleSheets(uidOrUsername).catch(() => {});
     const updatedUsers = getAllRegisteredUsersList();
     setRegisteredUsers(updatedUsers);
 
@@ -1100,8 +1156,34 @@ export default function App() {
     }
     clearAllRegisteredUsers(user || undefined);
     await clearAllUsersFromFirestore(user || undefined);
+    resetGoogleSheetsAndDrive().catch(() => {});
     const updatedUsers = getAllRegisteredUsersList();
     setRegisteredUsers(updatedUsers);
+  };
+
+  // Admin Reset Entire System Function (Google Sheets, Drive, Firestore, SQLite)
+  const handleResetEntireSystem = async () => {
+    if (!user?.isAdmin) {
+      alert('❌ เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถรีเซ็ตระบบได้');
+      return;
+    }
+    try {
+      // 1. Reset Firestore
+      await resetFirestoreToDefault();
+      // 2. Clear SQLite local backups
+      await fetch('/api/backup/clear', { method: 'POST' }).catch(() => {});
+      // 3. Reset Google Sheets & Drive
+      await resetGoogleSheetsAndDrive();
+      // 4. Reset local storage users & posts
+      localStorage.removeItem('mtfeed_deleted_post_ids');
+      localStorage.removeItem('mtfeed_deleted_post_signatures');
+      clearAllRegisteredUsers(user || undefined);
+      setRegisteredUsers(getAllRegisteredUsersList());
+      setPosts(INITIAL_POSTS);
+    } catch (e: any) {
+      console.error('[RESET ERROR]', e);
+      throw e;
+    }
   };
 
   // Admin Broadcast "System & Security" Function
@@ -1804,6 +1886,7 @@ export default function App() {
         registeredUsers={registeredUsers}
         onDeleteUser={handleDeleteUser}
         onClearAllUsers={handleClearAllUsers}
+        onResetEntireSystem={handleResetEntireSystem}
         currentUser={user}
         onSendBroadcast={handleSendAdminBroadcast}
         onOpenSystemHealth={() => {

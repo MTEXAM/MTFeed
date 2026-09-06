@@ -8,23 +8,33 @@ let lastProfileSyncKey = '';
 let lastProfileSyncTime = 0;
 
 /**
- * 1. Sync user profile to Google Sheets via server proxy / Apps Script
- * Payload format: { action: 'updateProfile', uid, username, displayName, profileImage, deleteOld: true, replaceOld: true }
+ * Extract Google Drive file ID from a Drive link or lh3.googleusercontent.com link
  */
-export async function syncProfileToGoogleSheets(user: Partial<SessionUser>): Promise<boolean> {
-  if (!user) return false;
-  const uid = user.uid || user.id;
-  if (!uid) return false;
+export function extractDriveFileId(url: string | undefined | null): string | null {
+  if (!url || typeof url !== 'string') return null;
+  const match1 = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (match1 && match1[1]) return match1[1];
+  const match2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (match2 && match2[1]) return match2[1];
+  return null;
+}
 
-  const syncKey = `${uid}_${user.name}_${user.username}_${user.avatar}`;
-  const now = Date.now();
-  // Deduplicate rapid calls within 5 seconds for the exact same user data
-  if (syncKey === lastProfileSyncKey && (now - lastProfileSyncTime < 5000)) {
-    console.log('[SHEETS SYNC] Deduplicating profile sync call (already sent within 5s)');
-    return true;
-  }
-  lastProfileSyncKey = syncKey;
-  lastProfileSyncTime = now;
+export interface ProfileSyncResult {
+  success: boolean;
+  driveUrl?: string;
+}
+
+/**
+ * 1. Sync user profile to Google Sheets via server proxy / Apps Script
+ * Payload format: { action: 'updateProfile', uid, username, displayName, profileImage, oldFileId, deleteOld: true, replaceOld: true }
+ */
+export async function syncProfileToGoogleSheets(
+  user: Partial<SessionUser>,
+  options?: { oldAvatar?: string; isExplicitSave?: boolean }
+): Promise<ProfileSyncResult> {
+  if (!user) return { success: false };
+  const uid = user.uid || user.id;
+  if (!uid) return { success: false };
 
   const cleanUsername = user.username ? user.username.replace(/^@/, '') : '';
   const explicitAvatar = getExplicitAvatar(uid, cleanUsername, 'MED68001');
@@ -34,6 +44,30 @@ export async function syncProfileToGoogleSheets(user: Partial<SessionUser>): Pro
     avatarToSend = explicitAvatar;
   }
 
+  // CRITICAL ANTI-DUPLICATE GUARD:
+  // If avatarToSend is Base64 (data:image/...) AND this is NOT an explicit user save action (e.g. background sync or page reload),
+  // DO NOT send the Base64 data to Apps Script! Apps Script creates a new file in Drive on every Base64 payload.
+  if (avatarToSend.startsWith('data:image/') && !options?.isExplicitSave) {
+    if (explicitAvatar && explicitAvatar.startsWith('http')) {
+      avatarToSend = explicitAvatar;
+    } else {
+      // Don't send base64 during background auto-syncs or on page loads
+      avatarToSend = '';
+    }
+  }
+
+  const syncKey = `${uid}_${user.name}_${user.username}_${avatarToSend}`;
+  const now = Date.now();
+  // Deduplicate rapid calls within 5 seconds for the exact same user data
+  if (syncKey === lastProfileSyncKey && (now - lastProfileSyncTime < 5000)) {
+    console.log('[SHEETS SYNC] Deduplicating profile sync call (already sent within 5s)');
+    return { success: true };
+  }
+  lastProfileSyncKey = syncKey;
+  lastProfileSyncTime = now;
+
+  const oldFileId = extractDriveFileId(options?.oldAvatar || explicitAvatar || user.avatar);
+
   const payload = {
     action: 'updateProfile',
     uid: uid,
@@ -42,6 +76,8 @@ export async function syncProfileToGoogleSheets(user: Partial<SessionUser>): Pro
     profileImage: avatarToSend,
     avatar: avatarToSend,
     image: avatarToSend,
+    oldFileId: oldFileId || '',
+    oldProfileImage: options?.oldAvatar || '',
     deleteOld: true,
     replaceOld: true,
     deletePrevious: true,
@@ -70,8 +106,10 @@ export async function syncProfileToGoogleSheets(user: Partial<SessionUser>): Pro
       const driveUrl = data?.result?.imageUrl || data?.result?.profileImage || data?.result?.data?.profileImage;
       if (driveUrl && typeof driveUrl === 'string' && driveUrl.startsWith('http')) {
         setExplicitAvatar(uid, driveUrl);
+        setExplicitAvatar(cleanUsername, driveUrl);
+        return { success: true, driveUrl };
       }
-      return true;
+      return { success: true };
     }
   } catch (err) {
     console.warn('[SHEETS SYNC] Server proxy failed, trying direct Apps Script fetch...', err);
@@ -79,17 +117,23 @@ export async function syncProfileToGoogleSheets(user: Partial<SessionUser>): Pro
 
   try {
     // 2. Fallback to direct client-side fetch
-    await fetch(GOOGLE_SHEETS_ENDPOINT, {
+    const directRes = await fetch(GOOGLE_SHEETS_ENDPOINT, {
       method: 'POST',
-      mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(payload)
     });
+    const directJson = await directRes.json().catch(() => ({}));
+    const driveUrl = directJson?.profileImage || directJson?.imageUrl;
+    if (driveUrl && typeof driveUrl === 'string' && driveUrl.startsWith('http')) {
+      setExplicitAvatar(uid, driveUrl);
+      setExplicitAvatar(cleanUsername, driveUrl);
+      return { success: true, driveUrl };
+    }
     console.log('[SHEETS SYNC] Profile sent directly to Google Sheets Apps Script');
-    return true;
+    return { success: true };
   } catch (err) {
     console.error('[SHEETS SYNC ERROR] Direct sync to Google Sheets failed:', err);
-    return false;
+    return { success: false };
   }
 }
 
@@ -510,3 +554,67 @@ export async function fetchProfileFromGoogleSheets(uid: string): Promise<Partial
 
   return null;
 }
+
+/**
+ * Delete a user from Google Sheets and remove their image files in Google Drive
+ */
+export async function deleteUserFromGoogleSheets(uidOrUsername: string): Promise<boolean> {
+  if (!uidOrUsername) return false;
+  const clean = uidOrUsername.replace(/^@/, '');
+  try {
+    const res = await fetch('/api/sheets/deleteUser', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid: clean, username: clean })
+    });
+    if (res.ok) return true;
+  } catch (e) {
+    console.warn('[SHEETS DELETE USER PROXY ERROR]', e);
+  }
+
+  // Fallback direct
+  try {
+    await fetch(GOOGLE_SHEETS_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'deleteUser', uid: clean, username: clean })
+    });
+    return true;
+  } catch (e) {
+    console.error('[SHEETS DELETE USER DIRECT ERROR]', e);
+    return false;
+  }
+}
+
+/**
+ * Reset Google Sheets (Feed & Users) and Google Drive folders (MTFeed_Profiles & MTFeed_Uploads)
+ */
+export async function resetGoogleSheetsAndDrive(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/sheets/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    if (res.ok) {
+      console.log('[SHEETS RESET] Google Sheets and Google Drive reset successfully via proxy');
+      return true;
+    }
+  } catch (e) {
+    console.warn('[SHEETS RESET PROXY ERROR]', e);
+  }
+
+  // Fallback direct
+  try {
+    await fetch(GOOGLE_SHEETS_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'resetData' })
+    });
+    console.log('[SHEETS RESET] Google Sheets and Google Drive reset successfully via direct fetch');
+    return true;
+  } catch (e) {
+    console.error('[SHEETS RESET DIRECT ERROR]', e);
+    return false;
+  }
+}
+

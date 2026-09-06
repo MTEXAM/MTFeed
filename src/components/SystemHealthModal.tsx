@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, Database, Cloud, RefreshCw, HardDrive, CheckCircle2, AlertTriangle, Wifi, WifiOff, FileSpreadsheet, Lock, ShieldAlert } from 'lucide-react';
+import { X, ShieldCheck, Database, Cloud, RefreshCw, HardDrive, CheckCircle2, AlertTriangle, Wifi, WifiOff, FileSpreadsheet, Lock, ShieldAlert, Copy, Check, Code2, ChevronDown, ChevronUp } from 'lucide-react';
 import { SystemHealthState, systemHealthManager } from '../utils/systemHealthService';
+import { GOOGLE_APPS_SCRIPT_SOURCE } from '../utils/googleAppsScriptCode';
 
 export function SystemHealthModal({
   isOpen,
@@ -15,8 +16,16 @@ export function SystemHealthModal({
 }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncSuccessMsg, setSyncSuccessMsg] = useState<string | null>(null);
+  const [showScript, setShowScript] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
+
+  const handleCopyScript = () => {
+    navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_SOURCE);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 3000);
+  };
 
   const handleManualSync = async () => {
     setIsSyncing(true);
@@ -218,6 +227,60 @@ export function SystemHealthModal({
               </div>
               <div>{getStatusBadge(healthState.offlineCache)}</div>
             </div>
+          </div>
+
+          {/* Google Apps Script Drive Auto-Delete Integration */}
+          <div className="border border-indigo-100 rounded-xl bg-indigo-50/50 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-lg">
+                  <Code2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-gray-900">
+                    Google Apps Script (ระบบลบรูปเดิมใน Drive อัตโนมัติ)
+                  </h4>
+                  <p className="text-[11px] text-gray-500">
+                    วางสคริปต์นี้ใน Google Sheets &gt; ส่วนขยาย &gt; Apps Script เพื่อให้ Google Drive ลบรูปเดิมอัตโนมัติเมื่อเปลี่ยนรูปใหม่
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={handleCopyScript}
+                  className="inline-flex items-center px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 mr-1 text-emerald-300" />
+                      คัดลอกสำเร็จ!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 mr-1" />
+                      คัดลอกโค้ด
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowScript(!showScript)}
+                  className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-indigo-100/50 rounded-lg transition-colors cursor-pointer"
+                  title={showScript ? 'ซ่อนโค้ด' : 'ดูโค้ดสคริปต์'}
+                >
+                  {showScript ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {showScript && (
+              <div className="relative mt-2">
+                <pre className="bg-gray-900 text-gray-100 text-[11px] p-3 rounded-lg overflow-x-auto max-h-56 font-mono leading-relaxed select-all">
+                  {GOOGLE_APPS_SCRIPT_SOURCE}
+                </pre>
+              </div>
+            )}
           </div>
 
           {/* Outbox info if pending */}

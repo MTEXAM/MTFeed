@@ -374,6 +374,8 @@ async function startServer() {
           displayName: payload.displayName || payload.name || 'User',
           username: username,
           profileImage: payload.profileImage || payload.avatar || '',
+          oldFileId: payload.oldFileId || '',
+          oldProfileImage: payload.oldProfileImage || '',
           deleteOld: true,
           replaceOld: true,
           deletePrevious: true,
@@ -498,6 +500,50 @@ async function startServer() {
       res.json({ success: true, queued: true, message: 'Post deletion queued for Google Sheets' });
     } catch (err: any) {
       console.error('[SHEETS PROXY ERROR]', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Delete user from Google Sheets & delete profile image from Drive
+  app.post('/api/sheets/deleteUser', async (req, res) => {
+    try {
+      const payload = req.body;
+      const uid = payload.uid || payload.id;
+      const username = payload.username ? String(payload.username).replace(/^@/, '') : '';
+      console.log('[SHEETS PROXY] Deleting user from Google Sheets & Drive files for UID:', uid);
+
+      const resp = await fetch(GOOGLE_SHEETS_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'deleteUser',
+          uid: uid,
+          username: username
+        })
+      });
+      const result = await resp.json().catch(() => ({ status: 'success' }));
+      res.json({ success: true, result });
+    } catch (err: any) {
+      console.error('[SHEETS DELETE USER ERROR]', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Reset entire Google Sheets and clean Google Drive folders to default state
+  app.post('/api/sheets/reset', async (req, res) => {
+    try {
+      console.log('[SHEETS PROXY] Triggering resetData on Google Sheets & Google Drive...');
+      const resp = await fetch(GOOGLE_SHEETS_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'resetData'
+        })
+      });
+      const result = await resp.json().catch(() => ({ status: 'success' }));
+      res.json({ success: true, result });
+    } catch (err: any) {
+      console.error('[SHEETS RESET ERROR]', err);
       res.status(500).json({ error: err.message });
     }
   });
