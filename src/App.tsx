@@ -18,7 +18,7 @@ import { SystemToastContainer, ToastItem } from './components/SystemToast';
 import { MessageSquare, Search, Bell, BookA, User as UserIcon, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { SessionUser, AppNotification, Post, User } from './types';
 import { resolveUserAccount, getInitialNotifications, getRegisteredUsers, getAllRegisteredUsersList, deleteRegisteredUser, clearAllRegisteredUsers, saveRegisteredUser, mtFeedChannel, maskUid, formatUserBadge, DEFAULT_ACTIVE_USERS, MAIN_SITE_URL, MAIN_SITE_HOST, sanitizeDisplayName, sanitizeUsername, setExplicitAvatar, getExplicitAvatar } from './utils/auth';
-import { subscribeToPosts, subscribeToUsers, subscribeToSystemNotifications, sendSystemBroadcastToFirestore, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, getPostSignature, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore, syncPostsToFirestore, getUserFromFirestore, getBackupPostsFromSQLite, getBackupUsersFromSQLite, restoreBackupsToFirestore, resetFirestoreToDefault } from './utils/firestoreService';
+import { subscribeToPosts, subscribeToUsers, subscribeToSystemNotifications, sendSystemBroadcastToFirestore, deletePostFromFirestore, deleteUserFromFirestore, clearAllUsersFromFirestore, saveUserToFirestore, getDeletedPostIds, getPostSignature, markPostAsDeletedLocally, mergePostsLists, savePostToFirestore, syncPostsToFirestore, getUserFromFirestore, getUserByUsernameFromFirestore, getBackupPostsFromSQLite, getBackupUsersFromSQLite, restoreBackupsToFirestore, resetFirestoreToDefault } from './utils/firestoreService';
 import { fetchFeedFromGoogleSheets, fetchProfileFromGoogleSheets, syncProfileToGoogleSheets, syncPostToGoogleSheets, extractProfilesFromSheetPosts, deleteUserFromGoogleSheets, resetGoogleSheetsAndDrive } from './utils/googleSheetsService';
 import { systemHealthManager, SystemHealthState } from './utils/systemHealthService';
 import { formatRealTime } from './utils/timeUtils';
@@ -116,11 +116,6 @@ function getInitialUser(): SessionUser | null {
         localStorage.setItem('mtfeed_user', JSON.stringify(autoUser));
       } catch (e) {
         console.error('Error saving auto user session:', e);
-      }
-
-      // Immediately sync profile to Google Sheets if not a raw base64 data URL
-      if (autoUser.avatar && !autoUser.avatar.startsWith('data:image/')) {
-        syncProfileToGoogleSheets(autoUser, { isExplicitSave: false }).catch(err => console.warn('[SHEETS INSTANT AUTO SYNC ERROR]', err));
       }
 
       return autoUser;
@@ -235,6 +230,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showWelcomeAlert, setShowWelcomeAlert] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(getInitialUser);
+  const profileEditCooldownRef = useRef<number>(0);
   const [sharedPostId, setSharedPostId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     return sessionStorage.getItem('mtfeed_shared_post_id');
@@ -297,7 +293,7 @@ export default function App() {
                     const localUpdatedAt = cur.updatedAt || 0;
                     const remoteUpdatedAt = u.updatedAt || 0;
                     
-                    if (remoteUpdatedAt > localUpdatedAt) {
+                    if (remoteUpdatedAt > localUpdatedAt && Date.now() >= profileEditCooldownRef.current) {
                       console.log('Real-time hydrating current user profile from Firestore update');
                       setUser(u);
                       localStorage.setItem('mtfeed_user', JSON.stringify(u));
@@ -461,7 +457,15 @@ export default function App() {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          return parsed.filter((p: Post) => p && p.id && !deletedIds.has(p.id));
+          return parsed.filter((p: Post) => {
+            if (!p || !p.id || deletedIds.has(p.id)) return false;
+            // Scrub empty zombie posts
+            const hasContent = typeof p.content === 'string' && p.content.trim().length > 0 && p.content !== 'undefined' && p.content !== 'null';
+            const hasImage = typeof p.image === 'string' && p.image.trim().length > 0 && p.image !== 'undefined';
+            const hasPdf = typeof p.pdfUrl === 'string' && p.pdfUrl.trim().length > 0 && p.pdfUrl !== 'undefined';
+            const hasPoll = p.poll && Array.isArray(p.poll.options) && p.poll.options.length > 0;
+            return hasContent || hasImage || hasPdf || hasPoll;
+          });
         }
       } catch (e) {
         console.error(e);
@@ -487,8 +491,14 @@ export default function App() {
   useEffect(() => {
     async function hydrateUser() {
       if (!user) return;
-      const remoteUser = await getUserFromFirestore(user.uid || user.username);
-      if (remoteUser) {
+      if (Date.now() < profileEditCooldownRef.current) return;
+      
+      let remoteUser = await getUserFromFirestore(user.uid);
+      if (!remoteUser && user.username) {
+        remoteUser = await getUserByUsernameFromFirestore(user.username);
+      }
+      
+      if (remoteUser && Date.now() >= profileEditCooldownRef.current) {
         // Compare timestamps
         const localUpdatedAt = user.updatedAt || 0;
         const remoteUpdatedAt = remoteUser.updatedAt || 0;
@@ -529,33 +539,22 @@ export default function App() {
         if (sheetProfiles.length > 0) {
           setRegisteredUsers(prev => {
             const regMap: Record<string, SessionUser> = {};
+            // 1. First, preserve all existing users in the state map (which already includes Firestore users!)
             prev.forEach(u => {
               const key = (u.uid || u.username || u.id || '').toLowerCase();
               if (key) regMap[key] = u;
             });
+
+            // 2. ONLY add missing profiles from Google Sheets (do NOT overwrite fresh Firestore/local profiles with old post snapshots!)
             sheetProfiles.forEach(sp => {
               const key = (sp.uid || sp.username || sp.id || '').toLowerCase();
               if (key) {
-                const existing = regMap[key];
-                if (!existing) {
+                if (!regMap[key]) {
                   regMap[key] = sp;
-                } else {
-                  // Only update if sheet profile has real data, not placeholder
-                  const isPlaceholderName = !sp.name || sp.name === 'MED68001' || sp.name === '#MED68001' || sp.name === 'User';
-                  const isDicebearAvatar = !sp.avatar || sp.avatar.includes('api.dicebear.com');
-                  const hasCustomExistingAvatar = existing.avatar && (existing.avatar.startsWith('data:image/') || !existing.avatar.includes('api.dicebear.com'));
-                  const explicitSaved = getExplicitAvatar(sp.uid, sp.username, key, existing.uid, existing.username);
-
-                  const resolvedAvatar = explicitSaved || (hasCustomExistingAvatar && isDicebearAvatar ? existing.avatar : (sp.avatar || existing.avatar));
-
-                  regMap[key] = {
-                    ...existing,
-                    ...sp,
-                    name: isPlaceholderName ? existing.name : (sp.name || existing.name),
-                    username: sp.username || existing.username,
-                    avatar: resolvedAvatar
-                  };
                 }
+                // We REMOVED the overwrite block here because old posts in Google Sheets contain 
+                // stale profile snapshots (e.g. old avatars, old names). Overwriting Firestore 
+                // data with these snapshots caused the "profile rollback /รูปย้อน" bug.
               }
             });
             const mergedList = Object.values(regMap);
@@ -908,14 +907,50 @@ export default function App() {
     }
   }, []);
 
-  const handleLogin = (username: string, isAdmin: boolean, verifiedAdmin?: boolean, avatar?: string, displayName?: string) => {
+  const handleLogin = async (username: string, isAdmin: boolean, verifiedAdmin?: boolean, avatar?: string, displayName?: string) => {
+    let existingUid: string | undefined;
+    let finalAvatar = avatar;
+    let finalDisplayName = displayName;
+    let existingUserGroup: string | undefined;
+    
+    // Check if user already exists in Firestore by username
+    try {
+      const existingUser = await getUserByUsernameFromFirestore(username);
+      if (existingUser) {
+        if (existingUser.uid) existingUid = existingUser.uid;
+        
+        // Preserve existing profile data if not explicitly overriding during login
+        if (!finalAvatar && existingUser.avatar) {
+          finalAvatar = existingUser.avatar;
+        }
+        if (!finalDisplayName && existingUser.name) {
+          finalDisplayName = existingUser.name;
+        }
+        if (existingUser.userGroup) {
+          existingUserGroup = existingUser.userGroup;
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to check existing user in Firestore", err);
+    }
+
     const userData = resolveUserAccount({
       username,
-      displayName,
-      avatar,
+      uidParam: existingUid, // Pass the found UID so it reuses it instead of generating a duplicate!
+      displayName: finalDisplayName,
+      avatar: finalAvatar,
       role: isAdmin ? 'admin' : undefined,
+      userGroupParam: existingUserGroup,
       verifiedAdmin
     });
+    
+    // If the user already existed and we fetched their old state, restore their updatedAt 
+    // so we don't accidentally overwrite a newer remote profile with this login event.
+    if (existingUid) {
+      // Small delay on updatedAt to let it register as a new login, but not override
+      // completely if there's a concurrency issue. Actually, login is a local state init.
+    }
+    
     setUser(userData);
     saveRegisteredUser(userData);
     saveUserToFirestore(userData);
@@ -930,6 +965,7 @@ export default function App() {
 
   const handleSaveProfile = (updatedData: Partial<SessionUser>) => {
     if (!user) return;
+    profileEditCooldownRef.current = Date.now() + 180000; // 3 minutes cooldown against background overwrites
     const oldAvatar = user.avatar;
     const updatedUser: SessionUser = {
       ...user,
@@ -950,6 +986,10 @@ export default function App() {
       setExplicitAvatar(updatedUser.uid || updatedUser.id, updatedUser.avatar);
       if (updatedUser.username) {
         setExplicitAvatar(updatedUser.username, updatedUser.avatar);
+      }
+      if (updatedUser.isAdmin || (updatedUser.uid && updatedUser.uid.replace(/^#/, '').toUpperCase() === 'MED68001')) {
+        setExplicitAvatar('MED68001', updatedUser.avatar);
+        setExplicitAvatar('bank', updatedUser.avatar);
       }
     }
 
@@ -995,14 +1035,24 @@ export default function App() {
     syncProfileToGoogleSheets(updatedUser, { oldAvatar, isExplicitSave: true }).then((res) => {
       if (res.driveUrl && res.driveUrl.startsWith('http')) {
         console.log('[DRIVE SYNC] Received permanent Drive URL for profile image:', res.driveUrl);
+        profileEditCooldownRef.current = Date.now() + 180000;
         const permanentUser: SessionUser = {
           ...updatedUser,
-          avatar: res.driveUrl
+          avatar: res.driveUrl,
+          updatedAt: Date.now()
         };
         setUser(permanentUser);
         setExplicitAvatar(permanentUser.uid || permanentUser.id, res.driveUrl);
         if (permanentUser.username) {
           setExplicitAvatar(permanentUser.username, res.driveUrl);
+        }
+        if (permanentUser.isAdmin || (permanentUser.uid && permanentUser.uid.replace(/^#/, '').toUpperCase() === 'MED68001')) {
+          setExplicitAvatar('MED68001', res.driveUrl);
+          setExplicitAvatar('bank', res.driveUrl);
+          if (DEFAULT_ACTIVE_USERS['MED68001']) {
+            DEFAULT_ACTIVE_USERS['MED68001'].avatar = res.driveUrl;
+            DEFAULT_ACTIVE_USERS['MED68001'].name = permanentUser.name;
+          }
         }
         saveRegisteredUser(permanentUser);
         saveUserToFirestore(permanentUser);

@@ -14,6 +14,7 @@ export function AuthModal({
   const [displayName, setDisplayName] = useState('');
   const [avatar, setAvatar] = useState('');
   const [isProcessingImage, setIsProcessingImage] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -75,15 +76,21 @@ export function AuthModal({
     setAvatar(`https://api.dicebear.com/7.x/avataaars/svg?seed=${randomSeed}&backgroundColor=${randomColor}`);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoggingIn) return;
+    setIsLoggingIn(true);
     const finalUsername = username.trim() || 'medtech_user';
-    onLogin(finalUsername, false, false, avatar || undefined, displayName.trim() || undefined);
+    await onLogin(finalUsername, false, false, avatar || undefined, displayName.trim() || undefined);
+    setIsLoggingIn(false);
     onClose();
   };
 
-  const handleQuickLogin = (demoUsername: string, demoDisplayName: string) => {
-    onLogin(demoUsername, false, false, undefined, demoDisplayName);
+  const handleQuickLogin = async (demoUsername: string, demoDisplayName: string) => {
+    if (isLoggingIn) return;
+    setIsLoggingIn(true);
+    await onLogin(demoUsername, false, false, undefined, demoDisplayName);
+    setIsLoggingIn(false);
     onClose();
   };
 
@@ -206,10 +213,11 @@ export function AuthModal({
 
           <button 
             type="submit" 
-            className="w-full flex justify-center items-center py-2.5 px-4 rounded-xl shadow-xs text-sm font-bold text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 mt-6 transition-colors cursor-pointer"
+            disabled={isLoggingIn}
+            className={`w-full flex justify-center items-center py-2.5 px-4 rounded-xl shadow-xs text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 mt-6 transition-colors ${isLoggingIn ? 'bg-red-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 cursor-pointer'}`}
           >
-            <span>เข้าสู่ระบบทันที</span>
-            <ArrowRight className="w-4 h-4 ml-1.5" />
+            <span>{isLoggingIn ? 'กำลังตรวจสอบข้อมูล...' : 'เข้าสู่ระบบทันที'}</span>
+            {!isLoggingIn && <ArrowRight className="w-4 h-4 ml-1.5" />}
           </button>
         </form>
 
@@ -219,16 +227,18 @@ export function AuthModal({
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
+              disabled={isLoggingIn}
               onClick={() => handleQuickLogin('jiraporn_med', 'จิรภรณ์ ตรวจเลือด')}
-              className="px-2.5 py-2 bg-white hover:bg-red-50 hover:text-red-700 hover:border-red-200 border border-gray-200 rounded-xl text-left text-xs font-medium text-gray-700 transition-colors shadow-2xs cursor-pointer"
+              className={`px-2.5 py-2 bg-white hover:bg-red-50 hover:text-red-700 hover:border-red-200 border border-gray-200 rounded-xl text-left text-xs font-medium text-gray-700 transition-colors shadow-2xs ${isLoggingIn ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
             >
               <div className="font-bold truncate">🔬 นศ. จิรภรณ์</div>
               <div className="text-[10px] text-gray-400 truncate">@jiraporn_med</div>
             </button>
             <button
               type="button"
+              disabled={isLoggingIn}
               onClick={() => handleQuickLogin('kanokwan_exam', 'กนกวรรณ เตรียมสอบ')}
-              className="px-2.5 py-2 bg-white hover:bg-red-50 hover:text-red-700 hover:border-red-200 border border-gray-200 rounded-xl text-left text-xs font-medium text-gray-700 transition-colors shadow-2xs cursor-pointer"
+              className={`px-2.5 py-2 bg-white hover:bg-red-50 hover:text-red-700 hover:border-red-200 border border-gray-200 rounded-xl text-left text-xs font-medium text-gray-700 transition-colors shadow-2xs ${isLoggingIn ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
             >
               <div className="font-bold truncate">📝 กนกวรรณ</div>
               <div className="text-[10px] text-gray-400 truncate">@kanokwan_exam</div>

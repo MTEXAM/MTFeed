@@ -82,7 +82,13 @@ function doGet(e) {
 
   // ดึงฟีดโพสต์ทั้งหมด
   if (action === 'getFeed' || !action) {
-    var sheet = ss.getSheetByName('Feed') || ss.getSheets()[0];
+    var sheet = ss.getSheetByName('Feed');
+    if (!sheet) {
+      sheet = ss.insertSheet('Feed');
+      sheet.appendRow(['PostID', 'UID', 'Username', 'DisplayName', 'ProfileImage', 'Content', 'Timestamp']);
+      return ContentService.createTextOutput(JSON.stringify({ status: 'success', data: [] }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
     var data = sheet.getDataRange().getValues();
     if (data.length <= 1) {
       return ContentService.createTextOutput(JSON.stringify({ status: 'success', data: [] }))
@@ -99,7 +105,7 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
-  // ดึงข้อมูลโปรไฟล์ผู้ใช้ (ค้นหาไม่สนตัวพิมพ์เล็ก/ใหญ่)
+  // ดึงข้อมูลโปรไฟล์ผู้ใช้ (ค้นหาแถวที่อัปเดตล่าสุดและลบแถวซ้ำซ้อน)
   if (action === 'getProfile') {
     var uid = String((e && e.parameter && e.parameter.uid) || '').replace(/^#/, '').trim();
     var sheet = ss.getSheetByName('Users');
@@ -115,21 +121,32 @@ function doGet(e) {
     var imgIdx = getColIndex(headers, ['profileimage', 'avatar', 'image', 'picture', 'photo']);
     var timeIdx = getColIndex(headers, ['lastupdate', 'updatedat', 'timestamp', 'date', 'time']);
 
+    var matchedProfile = null;
+    var newestTime = 0;
+
     for (var i = 1; i < data.length; i++) {
       var rowUid = String(uidIdx !== -1 ? data[i][uidIdx] : data[i][0] || '').replace(/^#/, '').trim();
       var rowUName = String(uNameIdx !== -1 ? data[i][uNameIdx] : '').replace(/^@/, '').trim();
 
       if (rowUid.toLowerCase() === uid.toLowerCase() || (rowUName && rowUName.toLowerCase() === uid.toLowerCase())) {
-        var profile = {
-          uid: rowUid,
-          username: uNameIdx !== -1 ? data[i][uNameIdx] : '',
-          displayName: dNameIdx !== -1 ? data[i][dNameIdx] : '',
-          profileImage: imgIdx !== -1 ? data[i][imgIdx] : '',
-          lastUpdate: timeIdx !== -1 ? data[i][timeIdx] : ''
-        };
-        return ContentService.createTextOutput(JSON.stringify({ status: 'success', data: profile }))
-          .setMimeType(ContentService.MimeType.JSON);
+        var rowTimeStr = timeIdx !== -1 ? String(data[i][timeIdx] || '') : '';
+        var rowTime = rowTimeStr ? new Date(rowTimeStr).getTime() : 0;
+        if (!matchedProfile || rowTime >= newestTime) {
+          newestTime = rowTime;
+          matchedProfile = {
+            uid: rowUid,
+            username: uNameIdx !== -1 ? data[i][uNameIdx] : '',
+            displayName: dNameIdx !== -1 ? data[i][dNameIdx] : '',
+            profileImage: imgIdx !== -1 ? data[i][imgIdx] : '',
+            lastUpdate: rowTimeStr
+          };
+        }
       }
+    }
+
+    if (matchedProfile) {
+      return ContentService.createTextOutput(JSON.stringify({ status: 'success', data: matchedProfile }))
+        .setMimeType(ContentService.MimeType.JSON);
     }
     return ContentService.createTextOutput(JSON.stringify({ status: 'not_found', message: 'User not found' }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -169,17 +186,17 @@ function doPost(e) {
       var imgIdx = getColIndex(uHeaders, ['profileimage', 'avatar', 'image', 'picture', 'photo']);
       var timeIdx = getColIndex(uHeaders, ['lastupdate', 'updatedat', 'timestamp', 'date', 'time']);
 
-      var userRowIndex = -1;
-      var existingOldProfileUrl = '';
+      // Find ALL matching rows for this user (both by UID and Username)
+      var matchingRows = [];
+      var existingOldProfileUrls = [];
       for (var j = 1; j < uData.length; j++) {
         var existingUid = String(uidIdx !== -1 ? uData[j][uidIdx] : uData[j][0] || '').replace(/^#/, '').trim();
         var existingUName = String(uNameIdx !== -1 ? uData[j][uNameIdx] : '').replace(/^@/, '').trim();
         if (existingUid.toLowerCase() === uid.toLowerCase() || (username && existingUName.toLowerCase() === username.toLowerCase())) {
-          userRowIndex = j + 1;
-          if (imgIdx !== -1) {
-            existingOldProfileUrl = String(uData[j][imgIdx] || '');
+          matchingRows.push(j + 1);
+          if (imgIdx !== -1 && uData[j][imgIdx]) {
+            existingOldProfileUrls.push(String(uData[j][imgIdx]));
           }
-          break;
         }
       }
 
@@ -187,8 +204,9 @@ function doPost(e) {
       if (profileImageUrl && profileImageUrl.indexOf('data:image') === 0) {
         var folder = getTargetFolder();
 
-        // 1. ลบไฟล์เดิมของผู้ใช้นี้ใน Google Drive ออกให้หมด (ทั้งจาก URL เดิมในชีต และค้นหาทุกไฟล์ใน App_Images)
-        trashOldFilesForUser(uid, username, existingOldProfileUrl || data.oldFileId || data.oldProfileImage);
+        // 1. ลบไฟล์เดิมของผู้ใช้นี้ใน Google Drive ออกให้หมด
+        var oldUrlCandidates = existingOldProfileUrls.concat([data.oldFileId, data.oldProfileImage]).filter(Boolean);
+        trashOldFilesForUser(uid, username, oldUrlCandidates.join(','));
 
         // 2. สร้างไฟล์รูปภาพใหม่ในไดรฟ์
         var contentType = profileImageUrl.substring(5, profileImageUrl.indexOf(';'));
@@ -203,13 +221,22 @@ function doPost(e) {
       }
 
       var nowIso = new Date().toISOString();
-      if (userRowIndex > 0) {
-        // อัปเดตทับแถวเดิม
-        if (uidIdx !== -1) usersSheet.getRange(userRowIndex, uidIdx + 1).setValue(uid);
-        if (uNameIdx !== -1) usersSheet.getRange(userRowIndex, uNameIdx + 1).setValue(username);
-        if (dNameIdx !== -1) usersSheet.getRange(userRowIndex, dNameIdx + 1).setValue(displayName);
-        if (imgIdx !== -1 && profileImageUrl) usersSheet.getRange(userRowIndex, imgIdx + 1).setValue(profileImageUrl);
-        if (timeIdx !== -1) usersSheet.getRange(userRowIndex, timeIdx + 1).setValue(nowIso);
+      var targetRow = matchingRows.length > 0 ? matchingRows[0] : -1;
+
+      if (targetRow > 0) {
+        // อัปเดตแถวแรก
+        if (uidIdx !== -1) usersSheet.getRange(targetRow, uidIdx + 1).setValue(uid);
+        if (uNameIdx !== -1) usersSheet.getRange(targetRow, uNameIdx + 1).setValue(username);
+        if (dNameIdx !== -1) usersSheet.getRange(targetRow, dNameIdx + 1).setValue(displayName);
+        if (imgIdx !== -1 && profileImageUrl) usersSheet.getRange(targetRow, imgIdx + 1).setValue(profileImageUrl);
+        if (timeIdx !== -1) usersSheet.getRange(targetRow, timeIdx + 1).setValue(nowIso);
+
+        // ลบแถวที่ซ้ำซ้อนทั้งหมดที่เหลือทิ้งทันที! (ลบจากล่างขึ้นบน)
+        for (var k = matchingRows.length - 1; k >= 1; k--) {
+          try {
+            usersSheet.deleteRow(matchingRows[k]);
+          } catch(err) {}
+        }
       } else {
         // เพิ่มแถวใหม่
         var newRow = [];
@@ -221,6 +248,30 @@ function doPost(e) {
         if (timeIdx !== -1) newRow[timeIdx] = nowIso;
         usersSheet.appendRow(newRow);
       }
+
+      // อัปเดต Feed ให้เป็นรูปใหม่ด้วย เพื่อไม่ให้รูปเก่าค้างในฟีด
+      try {
+        var feedSheet = ss.getSheetByName('Feed');
+        if (feedSheet && profileImageUrl) {
+          var fData = feedSheet.getDataRange().getValues();
+          if (fData.length > 1) {
+            var fHeaders = fData[0];
+            var fUidIdx = getColIndex(fHeaders, ['uid', 'authorid', 'userid']);
+            var fUNameIdx = getColIndex(fHeaders, ['username', 'user']);
+            var fImgIdx = getColIndex(fHeaders, ['profileimage', 'avatar', 'userimage']);
+            var fNameIdx = getColIndex(fHeaders, ['displayname', 'name', 'author']);
+
+            for (var f = 1; f < fData.length; f++) {
+              var fUid = String(fUidIdx !== -1 ? fData[f][fUidIdx] : '').replace(/^#/, '').trim();
+              var fUName = String(fUNameIdx !== -1 ? fData[f][fUNameIdx] : '').replace(/^@/, '').trim();
+              if (fUid.toLowerCase() === uid.toLowerCase() || (username && fUName.toLowerCase() === username.toLowerCase())) {
+                if (fImgIdx !== -1) feedSheet.getRange(f + 1, fImgIdx + 1).setValue(profileImageUrl);
+                if (fNameIdx !== -1 && displayName) feedSheet.getRange(f + 1, fNameIdx + 1).setValue(displayName);
+              }
+            }
+          }
+        }
+      } catch(err) {}
 
       return ContentService.createTextOutput(JSON.stringify({
         status: 'success',
@@ -292,7 +343,45 @@ function doPost(e) {
     }
 
     // ==========================================
-    // 4. RESET ALL DATA
+    // 4. DELETE POST
+    // ==========================================
+    if (action === 'deletePost') {
+      var feedSheet = ss.getSheetByName('Feed');
+      if (feedSheet) {
+        var data = feedSheet.getDataRange().getValues();
+        var postIdIndex = -1;
+        var headers = data[0];
+        
+        // Find PostID column index
+        for (var i = 0; i < headers.length; i++) {
+          if (headers[i] === 'PostID' || headers[i] === 'postId' || headers[i] === 'id') {
+            postIdIndex = i;
+            break;
+          }
+        }
+        
+        if (postIdIndex >= 0 && data.postId) {
+          // Iterate backwards to safely delete rows
+          var deletedCount = 0;
+          for (var r = data.length - 1; r >= 1; r--) {
+            if (data[r][postIdIndex] == data.postId) {
+              feedSheet.deleteRow(r + 1);
+              deletedCount++;
+            }
+          }
+          return ContentService.createTextOutput(JSON.stringify({
+            status: 'success',
+            message: 'Post deleted successfully',
+            deletedCount: deletedCount
+          })).setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Post not found or PostID column missing' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ==========================================
+    // 5. RESET ALL DATA
     // ==========================================
     if (action === 'resetData' || action === 'resetAll') {
       cleanAndResetAll();

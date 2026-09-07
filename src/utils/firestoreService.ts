@@ -7,6 +7,8 @@ import {
   deleteDoc, 
   onSnapshot, 
   query, 
+  where,
+  limit,
   orderBy, 
   serverTimestamp, 
   writeBatch 
@@ -14,7 +16,7 @@ import {
 import { db } from '../lib/firebase';
 import { Post, SessionUser, Comment, AppNotification, ExamCountdownConfig } from '../types';
 import { INITIAL_POSTS } from '../data';
-import { DEFAULT_ACTIVE_USERS } from './auth';
+import { DEFAULT_ACTIVE_USERS, getExplicitAvatar } from './auth';
 import { syncProfileToGoogleSheets, syncPostToGoogleSheets, syncDeletePostToGoogleSheets } from './googleSheetsService';
 import { systemHealthManager } from './systemHealthService';
 import { formatRealTime } from './timeUtils';
@@ -172,6 +174,24 @@ export async function getUserFromFirestore(uidOrUsername: string): Promise<Sessi
     }
   } catch (e) {
     console.error('Error fetching user from Firestore:', e);
+  }
+  return null;
+}
+
+// Search user by username
+export async function getUserByUsernameFromFirestore(username: string): Promise<SessionUser | null> {
+  if (!username) return null;
+  const cleanUsername = username.trim().toLowerCase().replace(/^@/, '');
+  try {
+    const usersRef = collection(db, USERS_COLLECTION);
+    const q = query(usersRef, where('username', '==', cleanUsername), limit(1));
+    const querySnapshot = await getDocs(q);
+    
+    if (!querySnapshot.empty) {
+      return querySnapshot.docs[0].data() as SessionUser;
+    }
+  } catch (e) {
+    console.error('Error fetching user by username from Firestore:', e);
   }
   return null;
 }
@@ -424,13 +444,16 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[], cu
 
     const primaryAuthor = primary.author || {} as any;
     const secondaryAuthor = secondary.author || {} as any;
+    const authorUid = primaryAuthor.uid || primaryAuthor.id || secondaryAuthor.uid || secondaryAuthor.id;
+    const authorUName = primaryAuthor.username || secondaryAuthor.username;
+    const explicitAvatar = getExplicitAvatar(authorUid, authorUName);
 
     const mergedAuthor = {
       ...secondaryAuthor,
       ...primaryAuthor,
       name: primaryAuthor.name || secondaryAuthor.name || 'User',
       username: primaryAuthor.username || secondaryAuthor.username || 'user',
-      avatar: primaryAuthor.avatar || secondaryAuthor.avatar
+      avatar: explicitAvatar || primaryAuthor.avatar || secondaryAuthor.avatar
     };
 
     return {
@@ -504,7 +527,14 @@ export function mergePostsLists(incomingPosts: Post[], existingPosts: Post[], cu
     existingPosts.forEach(processPost);
   }
 
-  const result = Array.from(map.values());
+  const result = Array.from(map.values()).filter((p: Post) => {
+    // Aggressively scrub any empty "zombie" posts (no text, no image, no pdf, no poll)
+    const hasContent = typeof p.content === 'string' && p.content.trim().length > 0 && p.content !== 'undefined' && p.content !== 'null';
+            const hasImage = typeof p.image === 'string' && p.image.trim().length > 0 && p.image !== 'undefined';
+            const hasPdf = typeof p.pdfUrl === 'string' && p.pdfUrl.trim().length > 0 && p.pdfUrl !== 'undefined';
+            const hasPoll = p.poll && Array.isArray(p.poll.options) && p.poll.options.length > 0;
+            return hasContent || hasImage || hasPdf || hasPoll;
+  });
   result.sort((a, b) => {
     const timeA = (a as any).createdAtMs || 0;
     const timeB = (b as any).createdAtMs || 0;

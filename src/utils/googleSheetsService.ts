@@ -342,33 +342,51 @@ export async function fetchFeedFromGoogleSheets(): Promise<Post[]> {
  */
 function mapSheetFeedToPosts(sheetRows: any[]): Post[] {
   return sheetRows.map((row: any, idx: number) => {
-    const rawTime = row.timestamp ? new Date(row.timestamp).getTime() : (Date.now() - idx * 60000);
+    // Due to legacy Google Apps Script, keys might be PascalCase or camelCase
+    const timestampVal = row.timestamp || row.Timestamp || row.createdAt || row.CreatedAt;
+    
+    // In old schema, Timestamp column (index 6) might contain imageUrl instead of timestamp
+    // If timestampVal is a URL, it's an image
+    let rawTime = Date.now() - idx * 60000;
+    let fallbackImageUrl = undefined;
+    
+    if (timestampVal && typeof timestampVal === 'string' && timestampVal.startsWith('http')) {
+      fallbackImageUrl = timestampVal;
+    } else if (timestampVal) {
+      rawTime = new Date(timestampVal).getTime();
+    }
+    
     const dateObj = new Date(rawTime);
     const dateFormatted = !isNaN(dateObj.getTime())
       ? dateObj.toLocaleDateString('th-TH', { month: 'short', day: 'numeric' }) + ' • ' + dateObj.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
       : 'เมื่อสักครู่';
 
-    const rawUid = row.uid || 'MED68001';
-    const uid = rawUid.replace(/^#/, '');
-    let displayName = row.displayName || row.author || '';
+    const rawUid = row.uid || row.UID || row.userId || row.UserID || 'MED68001';
+    const uid = String(rawUid).replace(/^#/, '');
+    
+    // Note: old script put displayName in Username column and username in DisplayName column
+    let displayName = row.displayName || row.DisplayName || row.author || row.Username || row.username || '';
     if (!displayName || displayName === 'MED68001' || displayName === '#MED68001') {
       displayName = (uid === 'MED68001' || uid === 'BANK2026') ? 'Bank' : 'User';
     }
-    let username = (row.username || displayName).replace(/^@/, '').toLowerCase().replace(/\s+/g, '_');
+    let username = (row.username || row.Username || row.DisplayName || row.displayName || displayName).replace(/^@/, '').toLowerCase().replace(/\s+/g, '_');
     if (username === 'med68001' || username === 'admin') {
       username = 'bank';
     }
-    const avatar = row.profileImage || row.authorImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(username)}`;
+    const avatar = row.profileImage || row.ProfileImage || row.authorImage || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(username)}`;
     
     // Stable ID: prefer postId, or construct stable deterministic ID from timestamp/content
-    const stableId = row.postId 
-      ? String(row.postId)
-      : (row.timestamp ? `sheet_time_${new Date(row.timestamp).getTime()}` : `sheet_row_${idx}`);
+    const postIdVal = row.postId || row.PostID || row.id || row.ID;
+    const stableId = postIdVal 
+      ? String(postIdVal)
+      : (timestampVal && !fallbackImageUrl ? `sheet_time_${new Date(timestampVal).getTime()}` : `sheet_row_${idx}`);
 
-    let contentStr = typeof row.content === 'string' ? row.content : (row.content ? String(row.content) : '');
-    let extractedImage = row.image || undefined;
-    let extractedPdfUrl = row.pdfUrl || row.pdf || row.pdfLink || undefined;
-    let extractedPdfName = row.pdfName || (extractedPdfUrl ? 'เอกสารประกอบการเรียน.pdf' : undefined);
+    let contentStr = row.content || row.Content || '';
+    contentStr = typeof contentStr === 'string' ? contentStr : String(contentStr);
+    
+    let extractedImage = row.image || row.Image || row.imageUrl || row.ImageUrl || fallbackImageUrl || undefined;
+    let extractedPdfUrl = row.pdfUrl || row.PdfUrl || row.pdf || row.Pdf || row.pdfLink || undefined;
+    let extractedPdfName = row.pdfName || row.PdfName || (extractedPdfUrl ? 'เอกสารประกอบการเรียน.pdf' : undefined);
     
     if (!extractedImage) {
       const imageMatch = contentStr.match(/(https?:\/\/[^\s]+(?:jpg|jpeg|png|gif|webp|unsplash\.com)[^\s]*)/i);
@@ -407,6 +425,13 @@ function mapSheetFeedToPosts(sheetRows: any[]): Post[] {
         bookmarks: 0
       }
     };
+  }).filter((post: Post) => {
+    // Filter out completely empty posts (usually caused by deletion remnants or schema mismatches)
+    const hasContent = typeof post.content === 'string' && post.content.trim().length > 0 && post.content !== 'undefined' && post.content !== 'null';
+    const hasImage = typeof post.image === 'string' && post.image.trim().length > 0 && post.image !== 'undefined';
+    const hasPdf = typeof post.pdfUrl === 'string' && post.pdfUrl.trim().length > 0 && post.pdfUrl !== 'undefined';
+    const hasPoll = post.poll && Array.isArray(post.poll.options) && post.poll.options.length > 0;
+    return hasContent || hasImage || hasPdf || hasPoll;
   });
 }
 
@@ -479,13 +504,14 @@ export async function fetchProfileFromGoogleSheets(uid: string): Promise<Partial
           const explicitSaved = getExplicitAvatar(candidateUid, json.data.uid, resolvedUsername);
           
           let resolvedAvatar = profileImg;
-          if ((!resolvedAvatar || resolvedAvatar.includes('api.dicebear.com')) && explicitSaved) {
+          if (explicitSaved && !explicitSaved.includes('api.dicebear.com')) {
+            // Local custom avatar always takes precedence over potentially stale remote sheet cache
             resolvedAvatar = explicitSaved;
-          } else if (!resolvedAvatar) {
-            resolvedAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedUsername)}`;
+          } else if (!resolvedAvatar || resolvedAvatar.includes('api.dicebear.com')) {
+            resolvedAvatar = explicitSaved || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedUsername)}`;
           }
 
-          if (resolvedAvatar && !resolvedAvatar.includes('api.dicebear.com')) {
+          if (!explicitSaved && resolvedAvatar && !resolvedAvatar.includes('api.dicebear.com')) {
             setExplicitAvatar(candidateUid, resolvedAvatar);
             setExplicitAvatar(resolvedUsername, resolvedAvatar);
           }
@@ -522,13 +548,13 @@ export async function fetchProfileFromGoogleSheets(uid: string): Promise<Partial
           const explicitSaved = getExplicitAvatar(candidateUid, json.data.uid, resolvedUsername);
           
           let resolvedAvatar = profileImg;
-          if ((!resolvedAvatar || resolvedAvatar.includes('api.dicebear.com')) && explicitSaved) {
+          if (explicitSaved && !explicitSaved.includes('api.dicebear.com')) {
             resolvedAvatar = explicitSaved;
-          } else if (!resolvedAvatar) {
-            resolvedAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedUsername)}`;
+          } else if (!resolvedAvatar || resolvedAvatar.includes('api.dicebear.com')) {
+            resolvedAvatar = explicitSaved || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedUsername)}`;
           }
 
-          if (resolvedAvatar && !resolvedAvatar.includes('api.dicebear.com')) {
+          if (!explicitSaved && resolvedAvatar && !resolvedAvatar.includes('api.dicebear.com')) {
             setExplicitAvatar(candidateUid, resolvedAvatar);
             setExplicitAvatar(resolvedUsername, resolvedAvatar);
           }

@@ -5,23 +5,33 @@ import { syncProfileToGoogleSheets } from './googleSheetsService';
 export const MAIN_SITE_URL = 'https://ais-pre-xiftsicrt4entwmmp6uygm-114914192301.asia-southeast1.run.app/';
 export const MAIN_SITE_HOST = 'ais-pre-xiftsicrt4entwmmp6uygm-114914192301.asia-southeast1.run.app';
 
-// Deterministic 8-char hash generator from string
+// Deterministic 8-char hash generator from string with minimal collisions
 export function generateHash8(str: string): string {
-  let hash = 0;
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
+    let ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
   }
-  const positiveHash = Math.abs(hash);
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let result = '';
-  let temp = positiveHash;
-  for (let i = 0; i < 8; i++) {
-    result += chars[temp % chars.length];
-    temp = Math.floor(temp / chars.length) + (i * 7) + 13;
+  
+  let p1 = Math.abs(h1) & 0xFFFFF; // 20 bits
+  let p2 = Math.abs(h2) & 0xFFFFF; // 20 bits
+  
+  for (let i = 0; i < 4; i++) {
+    result += chars[p1 & 0x1F];
+    p1 = p1 >>> 5;
   }
-  return result.slice(0, 8);
+  for (let i = 0; i < 4; i++) {
+    result += chars[p2 & 0x1F];
+    p2 = p2 >>> 5;
+  }
+  
+  return result;
 }
 
 // Generate random 8-character alphanumeric code
@@ -498,7 +508,7 @@ export function resolveUserAccount(params: {
   );
 
   // Check if this UID, username, or existing account has an explicitly set custom avatar
-  const explicitAvatar = getExplicitAvatar(finalUid, finalUsername, cleanUsername, isAdmin ? 'MED68001' : null);
+  const explicitAvatar = getExplicitAvatar(finalUid, finalUsername, cleanUsername);
   const existingAvatar = (existingUser?.avatar && !existingUser.avatar.includes('api.dicebear.com')) ? existingUser.avatar : null;
 
   const paramAvatarStr = params.avatar ? decodeURIComponent(params.avatar).trim() : '';
@@ -524,7 +534,6 @@ export function resolveUserAccount(params: {
   if (cleanAvatar && !cleanAvatar.includes('api.dicebear.com')) {
     setExplicitAvatar(finalUid, cleanAvatar);
     setExplicitAvatar(finalUsername, cleanAvatar);
-    if (isAdmin) setExplicitAvatar('MED68001', cleanAvatar);
   }
 
   const resolvedUser: SessionUser = {
